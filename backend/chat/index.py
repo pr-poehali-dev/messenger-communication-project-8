@@ -1,7 +1,7 @@
 import os
 import json
-import psycopg
-from datetime import datetime, timezone
+import psycopg2
+import random
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 ROOM_ID = "00000000-0000-0000-0000-000000000001"
@@ -11,10 +11,9 @@ USER_COLORS = [
     "#E0C97B", "#7BE07B", "#E07BB5", "#7BB5E0", "#E0957B",
 ]
 
-import random
-
 ADJECTIVES = ["Быстрый", "Смелый", "Мудрый", "Тихий", "Яркий", "Добрый", "Острый"]
 NOUNS = ["Кот", "Лис", "Волк", "Орёл", "Тигр", "Лось", "Рысь"]
+
 
 def random_username():
     adj = random.choice(ADJECTIVES)
@@ -22,8 +21,10 @@ def random_username():
     num = random.randint(1, 99)
     return f"{adj}{noun}{num}"
 
+
 def random_color():
     return random.choice(USER_COLORS)
+
 
 def cors_headers():
     return {
@@ -33,6 +34,7 @@ def cors_headers():
         "Content-Type": "application/json",
     }
 
+
 def json_response(data, status=200):
     return {
         "statusCode": status,
@@ -40,20 +42,24 @@ def json_response(data, status=200):
         "body": json.dumps(data, default=str),
     }
 
+
+def esc(val):
+    """Escape a string value for safe SQL interpolation."""
+    if val is None:
+        return "NULL"
+    return "'" + str(val).replace("'", "''") + "'"
+
+
 def handler(event, context):
     method = event.get("method", event.get("httpMethod", "GET")).upper()
-    path = event.get("path", "/").strip("/")
-    # Remove "api/chat/" prefix if present
-    for prefix in ["api/chat/", "api/chat"]:
-        if path.startswith(prefix):
-            path = path[len(prefix):].strip("/")
-            break
 
     headers_in = event.get("headers", {}) or {}
-    # Headers may be lowercase
     session_id = headers_in.get("x-session-id") or headers_in.get("X-Session-Id") or ""
 
     query_params = event.get("queryStringParameters") or {}
+    action = query_params.get("action", "")
+
+    print(f"[DEBUG] method={method} action={action!r} session={session_id!r}")
 
     if method == "OPTIONS":
         return {"statusCode": 204, "headers": cors_headers(), "body": ""}
@@ -64,104 +70,102 @@ def handler(event, context):
     except Exception:
         body = {}
 
-    with psycopg.connect(DATABASE_URL) as conn:
-        with conn.cursor() as cur:
+    conn = psycopg2.connect(DATABASE_URL)
+    try:
+        cur = conn.cursor()
 
-            # POST /join
-            if path == "join" and method == "POST":
-                if not session_id:
-                    return json_response({"error": "No session id"}, 400)
+        # POST ?action=join
+        if action == "join" and method == "POST":
+            if not session_id:
+                return json_response({"error": "No session id"}, 400)
 
-                username = (body.get("username") or random_username()).strip()[:50]
-                color = random_color()
+            username = (body.get("username") or random_username()).strip()[:50]
+            color = random_color()
 
-                cur.execute(
-                    """INSERT INTO chat_users (username, color, session_id, last_seen)
-                       VALUES (%s, %s, %s, NOW())
+            sql = f"""INSERT INTO chat_users (username, color, session_id, last_seen)
+                       VALUES ({esc(username)}, {esc(color)}, {esc(session_id)}, NOW())
                        ON CONFLICT (session_id)
                        DO UPDATE SET last_seen = NOW()
-                       RETURNING id, username, color, session_id""",
-                    (username, color, session_id)
-                )
-                row = cur.fetchone()
-                conn.commit()
-                user = {"id": str(row[0]), "username": row[1], "color": row[2], "session_id": row[3]}
-                return json_response({"user": user})
+                       RETURNING id, username, color, session_id"""
+            cur.execute(sql)
+            row = cur.fetchone()
+            conn.commit()
+            user = {"id": str(row[0]), "username": row[1], "color": row[2], "session_id": row[3]}
+            return json_response({"user": user})
 
-            # GET /messages
-            if path == "messages" and method == "GET":
-                limit = min(int(query_params.get("limit", 50)), 100)
-                since = query_params.get("since")
+        # GET ?action=messages
+        if action == "messages" and method == "GET":
+            limit = min(int(query_params.get("limit", 50)), 100)
+            since = query_params.get("since")
 
-                if since:
-                    cur.execute(
-                        """SELECT id, username, color, text, created_at
+            if since:
+                sql = f"""SELECT id, username, color, text, created_at
                            FROM chat_messages
-                           WHERE room_id = %s AND created_at > %s
+                           WHERE room_id = {esc(ROOM_ID)} AND created_at > {esc(since)}
                            ORDER BY created_at ASC
-                           LIMIT %s""",
-                        (ROOM_ID, since, limit)
-                    )
-                else:
-                    cur.execute(
-                        """SELECT id, username, color, text, created_at
+                           LIMIT {int(limit)}"""
+            else:
+                sql = f"""SELECT id, username, color, text, created_at
                            FROM chat_messages
-                           WHERE room_id = %s
+                           WHERE room_id = {esc(ROOM_ID)}
                            ORDER BY created_at DESC
-                           LIMIT %s""",
-                        (ROOM_ID, limit)
-                    )
+                           LIMIT {int(limit)}"""
 
-                rows = cur.fetchall()
-                messages = [
-                    {"id": str(r[0]), "username": r[1], "color": r[2], "text": r[3], "created_at": r[4].isoformat() if r[4] else None}
-                    for r in rows
-                ]
-                if not since:
-                    messages.reverse()
-                return json_response({"messages": messages})
+            cur.execute(sql)
+            rows = cur.fetchall()
+            messages = [
+                {
+                    "id": str(r[0]),
+                    "username": r[1],
+                    "color": r[2],
+                    "text": r[3],
+                    "created_at": r[4].isoformat() if r[4] else None
+                }
+                for r in rows
+            ]
+            if not since:
+                messages.reverse()
+            return json_response({"messages": messages})
 
-            # POST /messages
-            if path == "messages" and method == "POST":
-                if not session_id:
-                    return json_response({"error": "No session id"}, 400)
+        # POST ?action=send
+        if action == "send" and method == "POST":
+            if not session_id:
+                return json_response({"error": "No session id"}, 400)
 
-                text = (body.get("text") or "").strip()
-                if not text or len(text) > 1000:
-                    return json_response({"error": "Invalid message"}, 400)
+            text = (body.get("text") or "").strip()
+            if not text or len(text) > 1000:
+                return json_response({"error": "Invalid message"}, 400)
 
-                cur.execute(
-                    "SELECT id, username, color FROM chat_users WHERE session_id = %s",
-                    (session_id,)
-                )
-                row = cur.fetchone()
-                if not row:
-                    return json_response({"error": "User not found"}, 401)
+            cur.execute(f"SELECT id, username, color FROM chat_users WHERE session_id = {esc(session_id)}")
+            row = cur.fetchone()
+            if not row:
+                return json_response({"error": "User not found"}, 401)
 
-                user_id, username, color = row
+            user_id, username, color = row
 
-                cur.execute(
-                    "UPDATE chat_users SET last_seen = NOW() WHERE session_id = %s",
-                    (session_id,)
-                )
+            cur.execute(f"UPDATE chat_users SET last_seen = NOW() WHERE session_id = {esc(session_id)}")
 
-                cur.execute(
-                    """INSERT INTO chat_messages (room_id, user_id, username, color, text)
-                       VALUES (%s, %s, %s, %s, %s)
-                       RETURNING id, username, color, text, created_at""",
-                    (ROOM_ID, user_id, username, color, text)
-                )
-                r = cur.fetchone()
-                conn.commit()
-                msg = {"id": str(r[0]), "username": r[1], "color": r[2], "text": r[3], "created_at": r[4].isoformat() if r[4] else None}
-                return json_response({"message": msg}, 201)
+            cur.execute(f"""INSERT INTO chat_messages (room_id, user_id, username, color, text)
+                         VALUES ({esc(ROOM_ID)}, {esc(str(user_id))}, {esc(username)}, {esc(color)}, {esc(text)})
+                         RETURNING id, username, color, text, created_at""")
+            r = cur.fetchone()
+            conn.commit()
+            msg = {
+                "id": str(r[0]),
+                "username": r[1],
+                "color": r[2],
+                "text": r[3],
+                "created_at": r[4].isoformat() if r[4] else None
+            }
+            return json_response({"message": msg}, 201)
 
-            # GET /online
-            if path == "online" and method == "GET":
-                cur.execute(
-                    "SELECT COUNT(*) FROM chat_users WHERE last_seen > NOW() - INTERVAL '2 minutes'"
-                )
-                count = cur.fetchone()[0]
-                return json_response({"count": count})
+        # GET ?action=online
+        if action == "online" and method == "GET":
+            cur.execute("SELECT COUNT(*) FROM chat_users WHERE last_seen > NOW() - INTERVAL '2 minutes'")
+            count = cur.fetchone()[0]
+            return json_response({"count": count})
 
-    return json_response({"error": "Not found"}, 404)
+    finally:
+        conn.close()
+
+    return json_response({"error": "Not found", "action": action, "method": method}, 404)

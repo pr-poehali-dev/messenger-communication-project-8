@@ -73,8 +73,8 @@ export default function Chat() {
   const fetchMessages = useCallback(async (since?: string) => {
     try {
       const url = since
-        ? `${API_URL}/messages?since=${encodeURIComponent(since)}&limit=50`
-        : `${API_URL}/messages?limit=50`;
+        ? `${API_URL}?action=messages&since=${encodeURIComponent(since)}&limit=50`
+        : `${API_URL}?action=messages&limit=50`;
       const res = await fetch(url);
       if (!res.ok) return undefined;
       const data = await res.json();
@@ -86,7 +86,7 @@ export default function Chat() {
 
   const fetchOnline = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/online`);
+      const res = await fetch(`${API_URL}?action=online`);
       if (!res.ok) return;
       const data = await res.json();
       setOnlineCount(data.count);
@@ -149,7 +149,7 @@ export default function Chat() {
     const name = username.trim() || undefined;
     setJoining(true);
     try {
-      const res = await fetch(`${API_URL}/join`, {
+      const res = await fetch(`${API_URL}?action=join`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Session-Id": sessionId },
         body: JSON.stringify({ username: name }),
@@ -182,7 +182,7 @@ export default function Chat() {
     setTimeout(scrollToBottom, 50);
 
     try {
-      const res = await fetch(`${API_URL}/messages`, {
+      const res = await fetch(`${API_URL}?action=send`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Session-Id": sessionId },
         body: JSON.stringify({ text }),
