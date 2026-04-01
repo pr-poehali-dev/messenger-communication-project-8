@@ -165,6 +165,223 @@ def handler(event, context):
             count = cur.fetchone()[0]
             return json_response({"count": count})
 
+        # GET ?action=users — список онлайн пользователей (кроме себя)
+        if action == "users" and method == "GET":
+            cur.execute(f"""
+                SELECT id, username, color, last_seen
+                FROM chat_users
+                WHERE last_seen > NOW() - INTERVAL '5 minutes'
+                ORDER BY last_seen DESC
+                LIMIT 50
+            """)
+            rows = cur.fetchall()
+            users = [
+                {
+                    "id": str(r[0]),
+                    "username": r[1],
+                    "color": r[2],
+                    "last_seen": r[3].isoformat() if r[3] else None
+                }
+                for r in rows
+            ]
+            return json_response({"users": users})
+
+        # POST ?action=dm_open — открыть/создать личный диалог
+        if action == "dm_open" and method == "POST":
+            if not session_id:
+                return json_response({"error": "No session id"}, 400)
+
+            target_user_id = body.get("target_user_id", "").strip()
+            if not target_user_id:
+                return json_response({"error": "target_user_id required"}, 400)
+
+            # Получаем текущего пользователя
+            cur.execute(f"SELECT id, username, color FROM chat_users WHERE session_id = {esc(session_id)}")
+            row = cur.fetchone()
+            if not row:
+                return json_response({"error": "User not found"}, 401)
+            my_id = str(row[0])
+            my_username = row[1]
+            my_color = row[2]
+
+            if my_id == target_user_id:
+                return json_response({"error": "Cannot DM yourself"}, 400)
+
+            # Проверяем что target существует
+            cur.execute(f"SELECT id, username, color FROM chat_users WHERE id = {esc(target_user_id)}")
+            trow = cur.fetchone()
+            if not trow:
+                return json_response({"error": "Target user not found"}, 404)
+            target_username = trow[1]
+            target_color = trow[2]
+
+            # user1_id < user2_id для уникальности пары
+            u1, u2 = (my_id, target_user_id) if my_id < target_user_id else (target_user_id, my_id)
+
+            cur.execute(f"""
+                INSERT INTO direct_conversations (user1_id, user2_id)
+                VALUES ({esc(u1)}, {esc(u2)})
+                ON CONFLICT (user1_id, user2_id) DO UPDATE SET user1_id = direct_conversations.user1_id
+                RETURNING id, created_at
+            """)
+            crow = cur.fetchone()
+            conn.commit()
+
+            conv = {
+                "id": str(crow[0]),
+                "my_id": my_id,
+                "my_username": my_username,
+                "my_color": my_color,
+                "target_id": target_user_id,
+                "target_username": target_username,
+                "target_color": target_color,
+                "created_at": crow[1].isoformat() if crow[1] else None
+            }
+            return json_response({"conversation": conv})
+
+        # GET ?action=dm_messages&conv_id=...&since=...
+        if action == "dm_messages" and method == "GET":
+            if not session_id:
+                return json_response({"error": "No session id"}, 400)
+
+            conv_id = query_params.get("conv_id", "").strip()
+            if not conv_id:
+                return json_response({"error": "conv_id required"}, 400)
+
+            # Проверяем что пользователь участник разговора
+            cur.execute(f"SELECT id FROM chat_users WHERE session_id = {esc(session_id)}")
+            urow = cur.fetchone()
+            if not urow:
+                return json_response({"error": "User not found"}, 401)
+            my_id = str(urow[0])
+
+            cur.execute(f"""
+                SELECT id FROM direct_conversations
+                WHERE id = {esc(conv_id)}
+                AND (user1_id = {esc(my_id)} OR user2_id = {esc(my_id)})
+            """)
+            if not cur.fetchone():
+                return json_response({"error": "Forbidden"}, 403)
+
+            since = query_params.get("since")
+            limit = min(int(query_params.get("limit", 50)), 100)
+
+            if since:
+                cur.execute(f"""
+                    SELECT id, sender_id, sender_username, sender_color, text, created_at, read_at
+                    FROM direct_messages
+                    WHERE conversation_id = {esc(conv_id)} AND created_at > {esc(since)}
+                    ORDER BY created_at ASC
+                    LIMIT {int(limit)}
+                """)
+            else:
+                cur.execute(f"""
+                    SELECT id, sender_id, sender_username, sender_color, text, created_at, read_at
+                    FROM direct_messages
+                    WHERE conversation_id = {esc(conv_id)}
+                    ORDER BY created_at DESC
+                    LIMIT {int(limit)}
+                """)
+
+            rows = cur.fetchall()
+            messages = [
+                {
+                    "id": str(r[0]),
+                    "sender_id": str(r[1]),
+                    "sender_username": r[2],
+                    "sender_color": r[3],
+                    "text": r[4],
+                    "created_at": r[5].isoformat() if r[5] else None,
+                    "read_at": r[6].isoformat() if r[6] else None,
+                    "is_mine": str(r[1]) == my_id
+                }
+                for r in rows
+            ]
+            if not since:
+                messages.reverse()
+
+            # Отмечаем непрочитанные как прочитанные
+            cur.execute(f"""
+                UPDATE direct_messages
+                SET read_at = NOW()
+                WHERE conversation_id = {esc(conv_id)}
+                AND sender_id != {esc(my_id)}
+                AND read_at IS NULL
+            """)
+            conn.commit()
+
+            return json_response({"messages": messages})
+
+        # POST ?action=dm_send
+        if action == "dm_send" and method == "POST":
+            if not session_id:
+                return json_response({"error": "No session id"}, 400)
+
+            conv_id = body.get("conv_id", "").strip()
+            text = (body.get("text") or "").strip()
+
+            if not conv_id:
+                return json_response({"error": "conv_id required"}, 400)
+            if not text or len(text) > 1000:
+                return json_response({"error": "Invalid message"}, 400)
+
+            cur.execute(f"SELECT id, username, color FROM chat_users WHERE session_id = {esc(session_id)}")
+            urow = cur.fetchone()
+            if not urow:
+                return json_response({"error": "User not found"}, 401)
+            my_id, my_username, my_color = str(urow[0]), urow[1], urow[2]
+
+            # Проверяем участие в разговоре
+            cur.execute(f"""
+                SELECT id FROM direct_conversations
+                WHERE id = {esc(conv_id)}
+                AND (user1_id = {esc(my_id)} OR user2_id = {esc(my_id)})
+            """)
+            if not cur.fetchone():
+                return json_response({"error": "Forbidden"}, 403)
+
+            cur.execute(f"""
+                INSERT INTO direct_messages (conversation_id, sender_id, sender_username, sender_color, text)
+                VALUES ({esc(conv_id)}, {esc(my_id)}, {esc(my_username)}, {esc(my_color)}, {esc(text)})
+                RETURNING id, sender_id, sender_username, sender_color, text, created_at
+            """)
+            r = cur.fetchone()
+            cur.execute(f"UPDATE chat_users SET last_seen = NOW() WHERE session_id = {esc(session_id)}")
+            conn.commit()
+
+            msg = {
+                "id": str(r[0]),
+                "sender_id": str(r[1]),
+                "sender_username": r[2],
+                "sender_color": r[3],
+                "text": r[4],
+                "created_at": r[5].isoformat() if r[5] else None,
+                "is_mine": True
+            }
+            return json_response({"message": msg}, 201)
+
+        # GET ?action=dm_unread — количество непрочитанных личных сообщений
+        if action == "dm_unread" and method == "GET":
+            if not session_id:
+                return json_response({"count": 0})
+
+            cur.execute(f"SELECT id FROM chat_users WHERE session_id = {esc(session_id)}")
+            urow = cur.fetchone()
+            if not urow:
+                return json_response({"count": 0})
+            my_id = str(urow[0])
+
+            cur.execute(f"""
+                SELECT COUNT(*)
+                FROM direct_messages dm
+                JOIN direct_conversations dc ON dc.id = dm.conversation_id
+                WHERE (dc.user1_id = {esc(my_id)} OR dc.user2_id = {esc(my_id)})
+                AND dm.sender_id != {esc(my_id)}
+                AND dm.read_at IS NULL
+            """)
+            count = cur.fetchone()[0]
+            return json_response({"count": count})
+
     finally:
         conn.close()
 

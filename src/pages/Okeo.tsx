@@ -12,11 +12,40 @@ interface Message {
   created_at: string;
 }
 
+interface DmMessage {
+  id: string;
+  sender_id: string;
+  sender_username: string;
+  sender_color: string;
+  text: string;
+  created_at: string;
+  read_at: string | null;
+  is_mine: boolean;
+}
+
 interface User {
   id: string;
   username: string;
   color: string;
   session_id: string;
+}
+
+interface OnlineUser {
+  id: string;
+  username: string;
+  color: string;
+  last_seen: string;
+}
+
+interface Conversation {
+  id: string;
+  my_id: string;
+  my_username: string;
+  my_color: string;
+  target_id: string;
+  target_username: string;
+  target_color: string;
+  created_at: string;
 }
 
 function getSessionId(): string {
@@ -57,8 +86,22 @@ export default function Okeo() {
   const [username, setUsername] = useState("");
   const [onlineCount, setOnlineCount] = useState(0);
   const [lastSeen, setLastSeen] = useState<string | null>(null);
+
+  // Личные чаты
+  const [activeTab, setActiveTab] = useState<"public" | "dm">("public");
+  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
+  const [activeConv, setActiveConv] = useState<Conversation | null>(null);
+  const [dmMessages, setDmMessages] = useState<DmMessage[]>([]);
+  const [dmInput, setDmInput] = useState("");
+  const [dmLoading, setDmLoading] = useState(false);
+  const [dmLastSeen, setDmLastSeen] = useState<string | null>(null);
+  const [dmUnread, setDmUnread] = useState(0);
+  const [openingDm, setOpeningDm] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const dmMessagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dmInputRef = useRef<HTMLInputElement>(null);
   const sessionId = getSessionId();
 
   useEffect(() => {
@@ -68,6 +111,10 @@ export default function Okeo() {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const scrollDmToBottom = () => {
+    dmMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   const fetchMessages = useCallback(async (since?: string) => {
@@ -95,6 +142,46 @@ export default function Okeo() {
     }
   }, []);
 
+  const fetchOnlineUsers = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}?action=users`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setOnlineUsers(data.users || []);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const fetchDmUnread = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`${API_URL}?action=dm_unread`, {
+        headers: { "X-Session-Id": sessionId },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setDmUnread(data.count || 0);
+    } catch {
+      // ignore
+    }
+  }, [sessionId]);
+
+  const fetchDmMessages = useCallback(async (convId: string, since?: string) => {
+    try {
+      const url = since
+        ? `${API_URL}?action=dm_messages&conv_id=${encodeURIComponent(convId)}&since=${encodeURIComponent(since)}&limit=50`
+        : `${API_URL}?action=dm_messages&conv_id=${encodeURIComponent(convId)}&limit=50`;
+      const res = await fetch(url, { headers: { "X-Session-Id": sessionId } });
+      if (!res.ok) return undefined;
+      const data = await res.json();
+      return data.messages as DmMessage[];
+    } catch {
+      return undefined;
+    }
+  }, [sessionId]);
+
+  // Загрузка публичных сообщений
   useEffect(() => {
     if (!user) return;
     fetchMessages().then((msgs) => {
@@ -105,8 +192,11 @@ export default function Okeo() {
       }
     });
     fetchOnline();
-  }, [user, fetchMessages, fetchOnline]);
+    fetchOnlineUsers();
+    fetchDmUnread();
+  }, [user, fetchMessages, fetchOnline, fetchOnlineUsers, fetchDmUnread]);
 
+  // Поллинг публичных сообщений
   useEffect(() => {
     if (!user) return;
     const interval = setInterval(async () => {
@@ -117,14 +207,49 @@ export default function Okeo() {
           const newMsgs = msgs.filter((m) => !existingIds.has(m.id));
           if (newMsgs.length === 0) return prev;
           setLastSeen(newMsgs[newMsgs.length - 1].created_at);
-          setTimeout(scrollToBottom, 50);
+          if (activeTab === "public") setTimeout(scrollToBottom, 50);
           return [...prev, ...newMsgs];
         });
       }
       fetchOnline();
+      fetchOnlineUsers();
+      fetchDmUnread();
     }, POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, [user, lastSeen, fetchMessages, fetchOnline]);
+  }, [user, lastSeen, activeTab, fetchMessages, fetchOnline, fetchOnlineUsers, fetchDmUnread]);
+
+  // Загрузка DM при открытии диалога
+  useEffect(() => {
+    if (!activeConv) return;
+    fetchDmMessages(activeConv.id).then((msgs) => {
+      if (msgs) {
+        setDmMessages(msgs);
+        if (msgs.length > 0) setDmLastSeen(msgs[msgs.length - 1].created_at);
+        setTimeout(scrollDmToBottom, 50);
+      }
+    });
+    setTimeout(() => dmInputRef.current?.focus(), 100);
+  }, [activeConv, fetchDmMessages]);
+
+  // Поллинг DM
+  useEffect(() => {
+    if (!activeConv) return;
+    const interval = setInterval(async () => {
+      const msgs = await fetchDmMessages(activeConv.id, dmLastSeen || undefined);
+      if (msgs && msgs.length > 0) {
+        setDmMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const newMsgs = msgs.filter((m) => !existingIds.has(m.id));
+          if (newMsgs.length === 0) return prev;
+          setDmLastSeen(newMsgs[newMsgs.length - 1].created_at);
+          setTimeout(scrollDmToBottom, 50);
+          return [...prev, ...newMsgs];
+        });
+        setDmUnread(0);
+      }
+    }, POLL_INTERVAL);
+    return () => clearInterval(interval);
+  }, [activeConv, dmLastSeen, fetchDmMessages]);
 
   useEffect(() => {
     if (user) setTimeout(() => inputRef.current?.focus(), 100);
@@ -191,6 +316,78 @@ export default function Okeo() {
       handleSend();
     }
   };
+
+  const handleOpenDm = async (targetUser: OnlineUser) => {
+    if (!user || openingDm) return;
+    setOpeningDm(true);
+    try {
+      const res = await fetch(`${API_URL}?action=dm_open`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Session-Id": sessionId },
+        body: JSON.stringify({ target_user_id: targetUser.id }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      const data = await res.json();
+      setActiveConv(data.conversation);
+      setDmMessages([]);
+      setDmLastSeen(null);
+      setActiveTab("dm");
+    } catch {
+      // ignore
+    } finally {
+      setOpeningDm(false);
+    }
+  };
+
+  const handleDmSend = async () => {
+    const text = dmInput.trim();
+    if (!text || !activeConv || dmLoading) return;
+    setDmInput("");
+    setDmLoading(true);
+
+    const optimistic: DmMessage = {
+      id: `opt_${Date.now()}`,
+      sender_id: user?.id || "",
+      sender_username: user?.username || "",
+      sender_color: user?.color || "",
+      text,
+      created_at: new Date().toISOString(),
+      read_at: null,
+      is_mine: true,
+    };
+    setDmMessages((prev) => [...prev, optimistic]);
+    setTimeout(scrollDmToBottom, 50);
+
+    try {
+      const res = await fetch(`${API_URL}?action=dm_send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Session-Id": sessionId },
+        body: JSON.stringify({ conv_id: activeConv.id, text }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDmMessages((prev) =>
+          prev.map((m) => (m.id === optimistic.id ? data.message : m))
+        );
+        setDmLastSeen(data.message.created_at);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setDmLoading(false);
+    }
+  };
+
+  const handleDmKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleDmSend();
+    }
+  };
+
+  const otherOnlineUsers = user
+    ? onlineUsers.filter((u) => u.id !== user.id)
+    : onlineUsers;
 
   return (
     <div className="min-h-screen bg-[#0A0A0B] text-white font-ibm overflow-x-hidden">
@@ -357,15 +554,14 @@ export default function Okeo() {
               </div>
             </div>
             {/* Input mock */}
-            <div className="px-4 py-3 border-t border-white/6 flex items-center gap-2">
-              <div className="flex-1 bg-white/5 rounded px-3 py-2 text-xs text-white/20">Напишите сообщение...</div>
-              <div className="w-7 h-7 rounded bg-gold/20 flex items-center justify-center">
-                <Icon name="Send" size={12} color="#C9A84C" />
+            <div className="px-3 py-2.5 border-t border-white/6">
+              <div className="flex items-center gap-2 bg-white/4 border border-white/8 rounded-lg px-3 py-1.5">
+                <span className="text-white/20 text-xs flex-1">Написать сообщение...</span>
+                <Icon name="Send" size={11} color="#C9A84C" />
               </div>
             </div>
           </div>
-
-          {/* Floating badge */}
+          {/* Online badge */}
           <div
             className="absolute -top-4 -right-4 flex items-center gap-2 px-3 py-2 rounded-full border border-green-500/20 bg-green-500/5"
             style={{ backdropFilter: "blur(10px)" }}
@@ -462,11 +658,12 @@ export default function Okeo() {
               <em className="text-gold not-italic">прямо сейчас</em>
             </h2>
             <p className="text-white/35 text-sm leading-relaxed mb-8">
-              Попробуйте мессенджер ОКЕО вживую. Присоединяйтесь к общему каналу, представьтесь и начните общение с другими участниками.
+              Попробуйте мессенджер ОКЕО вживую. Присоединяйтесь к общему каналу или напишите кому-нибудь лично.
             </p>
             <div className="space-y-4">
               {[
                 { icon: "MessageCircle", text: "Мгновенная доставка сообщений" },
+                { icon: "Lock", text: "Личные чаты один на один" },
                 { icon: "Users", text: "Видите кто онлайн прямо сейчас" },
                 { icon: "Shield", text: "Сессия сохраняется автоматически" },
               ].map((item) => (
@@ -484,6 +681,37 @@ export default function Okeo() {
                 {onlineCount} {onlineCount === 1 ? "человек" : "человек"} онлайн
               </div>
             )}
+
+            {/* Online users list (shown when logged in) */}
+            {user && otherOnlineUsers.length > 0 && (
+              <div className="mt-8">
+                <div className="text-white/25 text-xs tracking-widest uppercase mb-3">Онлайн сейчас</div>
+                <div className="space-y-2">
+                  {otherOnlineUsers.slice(0, 8).map((u) => (
+                    <button
+                      key={u.id}
+                      onClick={() => handleOpenDm(u)}
+                      disabled={openingDm}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/6 bg-white/[0.02] hover:bg-white/[0.05] hover:border-gold/20 transition-all duration-200 group text-left"
+                    >
+                      <div
+                        className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-[#0A0A0B]"
+                        style={{ background: u.color }}
+                      >
+                        {u.username.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white/70 text-xs font-medium truncate group-hover:text-white/90 transition-colors">{u.username}</div>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                        <Icon name="MessageSquare" size={11} color="#C9A84C" className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right: actual messenger */}
@@ -494,145 +722,349 @@ export default function Okeo() {
                 background: "rgba(14,14,16,0.95)",
                 backdropFilter: "blur(20px)",
                 boxShadow: "0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(201,168,76,0.06)",
-                height: "560px",
+                height: "600px",
               }}
             >
-              {/* Header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-white/6 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gold/15 border border-gold/20 flex items-center justify-center">
-                    <Icon name="Hash" size={14} color="#C9A84C" />
-                  </div>
-                  <div>
-                    <div className="text-white/80 text-sm font-medium tracking-wide">общий</div>
-                    <div className="text-white/25 text-xs">
-                      {onlineCount > 0 ? `${onlineCount} участников онлайн` : "Публичный канал"}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                  <span className="text-white/25 text-xs ml-1">Live</span>
-                </div>
-              </div>
-
               {/* Join form */}
               {!user ? (
-                <div className="flex flex-col items-center justify-center flex-1 px-8 gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center mb-2">
-                    <Icon name="MessageSquare" size={28} color="#C9A84C" />
-                  </div>
-                  <div className="text-center">
-                    <div className="text-white/80 font-cormorant text-2xl mb-1.5">Войти в канал</div>
-                    <div className="text-white/30 text-sm">Введите имя или оставьте поле пустым</div>
-                  </div>
-                  <div className="w-full max-w-xs space-y-3">
-                    <input
-                      className="w-full bg-white/5 border border-white/8 rounded-xl px-4 py-3 text-white/80 text-sm placeholder:text-white/20 outline-none focus:border-gold/40 focus:bg-white/8 transition-all duration-200"
-                      placeholder="Ваше имя..."
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleJoin()}
-                    />
-                    <button
-                      onClick={handleJoin}
-                      disabled={joining}
-                      className="w-full py-3 bg-gold text-[#0A0A0B] font-medium text-sm tracking-widest uppercase rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {joining ? (
-                        <Icon name="Loader2" size={16} className="animate-spin" />
-                      ) : (
-                        <Icon name="ArrowRight" size={16} />
-                      )}
-                      {joining ? "Подключение..." : "Присоединиться"}
-                    </button>
-                  </div>
-                </div>
-              ) : (
                 <>
-                  {/* Messages list */}
-                  <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1 scrollbar-thin scrollbar-thumb-white/10">
-                    {messages.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-full text-white/20 text-sm gap-2">
-                        <Icon name="MessageCircle" size={32} />
-                        <span>Начните общение первым</span>
+                  {/* Header for join */}
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-white/6 flex-shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-gold/15 border border-gold/20 flex items-center justify-center">
+                        <Icon name="Hash" size={14} color="#C9A84C" />
                       </div>
-                    ) : (
-                      messages.map((m, i) => {
-                        const isOwn = m.username === user.username;
-                        const prevMsg = messages[i - 1];
-                        const sameUser = prevMsg && prevMsg.username === m.username;
-                        return (
-                          <div key={m.id} className={`flex items-end gap-2.5 ${isOwn ? "flex-row-reverse" : ""} ${sameUser ? "mt-0.5" : "mt-3"}`}>
-                            {!isOwn && !sameUser && (
-                              <div
-                                className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-[#0A0A0B]"
-                                style={{ background: m.color }}
-                              >
-                                {m.username.slice(0, 2).toUpperCase()}
-                              </div>
-                            )}
-                            {!isOwn && sameUser && <div className="w-7 flex-shrink-0" />}
-                            <div className={`max-w-[70%] ${sameUser ? "" : ""}`}>
-                              {!isOwn && !sameUser && (
-                                <div className="text-xs font-medium mb-1 ml-1" style={{ color: m.color }}>
-                                  {m.username}
-                                </div>
-                              )}
-                              <div
-                                className={`px-3.5 py-2 rounded-2xl text-sm leading-relaxed break-words ${
-                                  isOwn
-                                    ? "bg-gold/20 text-white/85 rounded-br-sm"
-                                    : "bg-white/6 text-white/75 rounded-bl-sm"
-                                }`}
-                              >
-                                {m.text}
-                              </div>
-                              <div className={`text-[10px] text-white/20 mt-1 ${isOwn ? "text-right mr-1" : "ml-1"}`}>
-                                {formatTime(m.created_at)}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                    <div ref={messagesEndRef} />
+                      <div>
+                        <div className="text-white/80 text-sm font-medium tracking-wide">общий</div>
+                        <div className="text-white/25 text-xs">
+                          {onlineCount > 0 ? `${onlineCount} участников онлайн` : "Публичный канал"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                      <span className="text-white/25 text-xs ml-1">Live</span>
+                    </div>
                   </div>
-
-                  {/* Input */}
-                  <div className="flex-shrink-0 px-4 py-4 border-t border-white/6">
-                    <div className="flex items-center gap-2 bg-white/5 border border-white/8 rounded-xl px-4 py-2.5 focus-within:border-gold/30 transition-colors duration-200">
-                      <div
-                        className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[8px] font-bold text-[#0A0A0B]"
-                        style={{ background: user.color }}
-                      >
-                        {user.username.slice(0, 2).toUpperCase()}
-                      </div>
+                  <div className="flex flex-col items-center justify-center flex-1 px-8 gap-5">
+                    <div className="w-16 h-16 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center mb-2">
+                      <Icon name="MessageSquare" size={28} color="#C9A84C" />
+                    </div>
+                    <div className="text-center">
+                      <div className="text-white/80 font-medium text-lg mb-1">Присоединиться к чату</div>
+                      <div className="text-white/30 text-sm">Введите имя или оставьте поле пустым</div>
+                    </div>
+                    <div className="w-full max-w-sm space-y-3">
                       <input
-                        ref={inputRef}
-                        className="flex-1 bg-transparent text-white/80 text-sm placeholder:text-white/20 outline-none"
-                        placeholder="Напишите сообщение..."
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        disabled={loading}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white/80 placeholder:text-white/20 text-sm outline-none focus:border-gold/30 transition-colors"
+                        placeholder="Ваше имя (необязательно)"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleJoin()}
+                        maxLength={50}
                       />
                       <button
-                        onClick={handleSend}
-                        disabled={!input.trim() || loading}
-                        className="w-7 h-7 rounded-lg bg-gold/20 hover:bg-gold/30 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 flex-shrink-0"
+                        onClick={handleJoin}
+                        disabled={joining}
+                        className="w-full py-3 bg-gold/15 hover:bg-gold/25 border border-gold/30 text-gold text-sm tracking-widest uppercase rounded-xl transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
                       >
-                        {loading ? (
-                          <Icon name="Loader2" size={13} color="#C9A84C" className="animate-spin" />
+                        {joining ? (
+                          <Icon name="Loader2" size={14} color="#C9A84C" className="animate-spin" />
                         ) : (
-                          <Icon name="Send" size={13} color="#C9A84C" />
+                          <Icon name="LogIn" size={14} color="#C9A84C" />
                         )}
+                        {joining ? "Вхожу..." : "Войти в чат"}
                       </button>
                     </div>
-                    <div className="mt-2 text-center text-white/15 text-[10px] tracking-wide">
-                      {user.username} · Enter для отправки
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Tabs header */}
+                  <div className="flex items-center border-b border-white/6 flex-shrink-0">
+                    <button
+                      onClick={() => setActiveTab("public")}
+                      className={`flex items-center gap-2 px-5 py-4 text-sm transition-all duration-200 border-b-2 ${
+                        activeTab === "public"
+                          ? "border-gold text-gold/90"
+                          : "border-transparent text-white/35 hover:text-white/60"
+                      }`}
+                    >
+                      <Icon name="Hash" size={13} color={activeTab === "public" ? "#C9A84C" : undefined} />
+                      общий
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("dm")}
+                      className={`flex items-center gap-2 px-5 py-4 text-sm transition-all duration-200 border-b-2 relative ${
+                        activeTab === "dm"
+                          ? "border-gold text-gold/90"
+                          : "border-transparent text-white/35 hover:text-white/60"
+                      }`}
+                    >
+                      <Icon name="Lock" size={13} color={activeTab === "dm" ? "#C9A84C" : undefined} />
+                      личные
+                      {dmUnread > 0 && (
+                        <span className="absolute top-3 right-2 w-4 h-4 rounded-full bg-gold text-[#0A0A0B] text-[9px] font-bold flex items-center justify-center">
+                          {dmUnread > 9 ? "9+" : dmUnread}
+                        </span>
+                      )}
+                    </button>
+                    <div className="flex-1" />
+                    <div className="flex items-center gap-1.5 pr-4">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                      <span className="text-white/25 text-xs">{onlineCount} онлайн</span>
                     </div>
                   </div>
+
+                  {/* PUBLIC CHAT TAB */}
+                  {activeTab === "public" && (
+                    <>
+                      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 scrollbar-thin">
+                        {messages.length === 0 && (
+                          <div className="flex flex-col items-center justify-center h-full text-white/20 text-sm gap-2">
+                            <Icon name="MessageSquare" size={32} color="#ffffff20" />
+                            <span>Пока нет сообщений</span>
+                            <span className="text-xs">Будьте первым!</span>
+                          </div>
+                        )}
+                        {messages.map((msg, i) => {
+                          const isMe = msg.username === user.username;
+                          const prevMsg = messages[i - 1];
+                          const showAvatar = !prevMsg || prevMsg.username !== msg.username;
+                          return (
+                            <div key={msg.id} className={`flex items-end gap-2 ${isMe ? "flex-row-reverse" : ""}`}>
+                              <div className={`flex-shrink-0 ${showAvatar ? "opacity-100" : "opacity-0"}`}>
+                                <div
+                                  className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-[#0A0A0B]"
+                                  style={{ background: msg.color }}
+                                >
+                                  {msg.username.slice(0, 2).toUpperCase()}
+                                </div>
+                              </div>
+                              <div className={`flex flex-col gap-0.5 max-w-[70%] ${isMe ? "items-end" : "items-start"}`}>
+                                {showAvatar && (
+                                  <div className={`flex items-center gap-2 px-1 ${isMe ? "flex-row-reverse" : ""}`}>
+                                    <span className="text-xs font-medium" style={{ color: msg.color }}>{msg.username}</span>
+                                    <span className="text-white/20 text-[10px]">{formatTime(msg.created_at)}</span>
+                                  </div>
+                                )}
+                                <div
+                                  className={`px-3 py-2 rounded-xl text-sm leading-relaxed break-words ${
+                                    isMe
+                                      ? "bg-gold/15 border border-gold/20 text-white/85 rounded-br-sm"
+                                      : "bg-white/5 border border-white/6 text-white/70 rounded-bl-sm"
+                                  }`}
+                                >
+                                  {msg.text}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div ref={messagesEndRef} />
+                      </div>
+
+                      {/* Public input */}
+                      <div className="flex-shrink-0 px-4 py-4 border-t border-white/6">
+                        <div className="flex items-center gap-2 bg-white/5 border border-white/8 rounded-xl px-4 py-2.5 focus-within:border-gold/30 transition-colors duration-200">
+                          <div
+                            className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[8px] font-bold text-[#0A0A0B]"
+                            style={{ background: user.color }}
+                          >
+                            {user.username.slice(0, 2).toUpperCase()}
+                          </div>
+                          <input
+                            ref={inputRef}
+                            className="flex-1 bg-transparent text-white/80 text-sm placeholder:text-white/20 outline-none"
+                            placeholder="Напишите сообщение..."
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            disabled={loading}
+                          />
+                          <button
+                            onClick={handleSend}
+                            disabled={!input.trim() || loading}
+                            className="w-7 h-7 rounded-lg bg-gold/20 hover:bg-gold/30 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 flex-shrink-0"
+                          >
+                            {loading ? (
+                              <Icon name="Loader2" size={13} color="#C9A84C" className="animate-spin" />
+                            ) : (
+                              <Icon name="Send" size={13} color="#C9A84C" />
+                            )}
+                          </button>
+                        </div>
+                        <div className="mt-2 text-center text-white/15 text-[10px] tracking-wide">
+                          {user.username} · Enter для отправки
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* DIRECT MESSAGES TAB */}
+                  {activeTab === "dm" && (
+                    <>
+                      {!activeConv ? (
+                        /* No conversation selected */
+                        <div className="flex flex-col items-center justify-center flex-1 px-8 gap-4 text-center">
+                          <div className="w-16 h-16 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center">
+                            <Icon name="Lock" size={28} color="#C9A84C" />
+                          </div>
+                          <div>
+                            <div className="text-white/70 font-medium text-base mb-1">Личные сообщения</div>
+                            <div className="text-white/30 text-sm max-w-xs">
+                              Выберите пользователя из списка онлайн слева, чтобы начать личный разговор
+                            </div>
+                          </div>
+                          {otherOnlineUsers.length === 0 && (
+                            <div className="text-white/20 text-xs mt-2">
+                              Сейчас никого нет онлайн
+                            </div>
+                          )}
+                          {otherOnlineUsers.length > 0 && (
+                            <div className="w-full max-w-xs space-y-2 mt-2">
+                              <div className="text-white/25 text-xs tracking-widest uppercase mb-3">Онлайн</div>
+                              {otherOnlineUsers.slice(0, 5).map((u) => (
+                                <button
+                                  key={u.id}
+                                  onClick={() => handleOpenDm(u)}
+                                  disabled={openingDm}
+                                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/6 bg-white/[0.02] hover:bg-gold/5 hover:border-gold/20 transition-all duration-200 group"
+                                >
+                                  <div
+                                    className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-bold text-[#0A0A0B]"
+                                    style={{ background: u.color }}
+                                  >
+                                    {u.username.slice(0, 2).toUpperCase()}
+                                  </div>
+                                  <div className="flex-1 text-left">
+                                    <div className="text-white/70 text-sm group-hover:text-white/90 transition-colors">{u.username}</div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                                    <Icon name="ChevronRight" size={13} color="#C9A84C" className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        /* Active conversation */
+                        <>
+                          {/* DM header */}
+                          <div className="flex items-center gap-3 px-4 py-3 border-b border-white/6 flex-shrink-0">
+                            <button
+                              onClick={() => { setActiveConv(null); setDmMessages([]); setDmLastSeen(null); }}
+                              className="w-7 h-7 rounded-lg hover:bg-white/8 flex items-center justify-center transition-colors"
+                            >
+                              <Icon name="ArrowLeft" size={14} color="#ffffff60" />
+                            </button>
+                            <div
+                              className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-bold text-[#0A0A0B]"
+                              style={{ background: activeConv.target_color }}
+                            >
+                              {activeConv.target_username.slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-white/80 text-sm font-medium truncate">{activeConv.target_username}</div>
+                              <div className="text-white/25 text-xs flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                                онлайн
+                              </div>
+                            </div>
+                            <div className="w-7 h-7 rounded-lg bg-gold/10 border border-gold/20 flex items-center justify-center">
+                              <Icon name="Lock" size={12} color="#C9A84C" />
+                            </div>
+                          </div>
+
+                          {/* DM messages */}
+                          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 scrollbar-thin">
+                            {dmMessages.length === 0 && (
+                              <div className="flex flex-col items-center justify-center h-full text-white/20 text-sm gap-2">
+                                <Icon name="MessageSquare" size={32} color="#ffffff20" />
+                                <span>Начните разговор</span>
+                                <span className="text-xs">Ваши сообщения видны только вам двоим</span>
+                              </div>
+                            )}
+                            {dmMessages.map((msg, i) => {
+                              const prevMsg = dmMessages[i - 1];
+                              const showAvatar = !prevMsg || prevMsg.sender_id !== msg.sender_id;
+                              return (
+                                <div key={msg.id} className={`flex items-end gap-2 ${msg.is_mine ? "flex-row-reverse" : ""}`}>
+                                  <div className={`flex-shrink-0 ${showAvatar ? "opacity-100" : "opacity-0"}`}>
+                                    <div
+                                      className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-[#0A0A0B]"
+                                      style={{ background: msg.sender_color }}
+                                    >
+                                      {msg.sender_username.slice(0, 2).toUpperCase()}
+                                    </div>
+                                  </div>
+                                  <div className={`flex flex-col gap-0.5 max-w-[70%] ${msg.is_mine ? "items-end" : "items-start"}`}>
+                                    {showAvatar && (
+                                      <div className={`flex items-center gap-2 px-1 ${msg.is_mine ? "flex-row-reverse" : ""}`}>
+                                        <span className="text-xs font-medium" style={{ color: msg.sender_color }}>{msg.sender_username}</span>
+                                        <span className="text-white/20 text-[10px]">{formatTime(msg.created_at)}</span>
+                                        {msg.is_mine && msg.read_at && (
+                                          <Icon name="CheckCheck" size={10} color="#C9A84C" />
+                                        )}
+                                      </div>
+                                    )}
+                                    <div
+                                      className={`px-3 py-2 rounded-xl text-sm leading-relaxed break-words ${
+                                        msg.is_mine
+                                          ? "bg-gold/15 border border-gold/20 text-white/85 rounded-br-sm"
+                                          : "bg-white/5 border border-white/6 text-white/70 rounded-bl-sm"
+                                      }`}
+                                    >
+                                      {msg.text}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            <div ref={dmMessagesEndRef} />
+                          </div>
+
+                          {/* DM input */}
+                          <div className="flex-shrink-0 px-4 py-4 border-t border-white/6">
+                            <div className="flex items-center gap-2 bg-white/5 border border-white/8 rounded-xl px-4 py-2.5 focus-within:border-gold/30 transition-colors duration-200">
+                              <div
+                                className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[8px] font-bold text-[#0A0A0B]"
+                                style={{ background: user.color }}
+                              >
+                                {user.username.slice(0, 2).toUpperCase()}
+                              </div>
+                              <input
+                                ref={dmInputRef}
+                                className="flex-1 bg-transparent text-white/80 text-sm placeholder:text-white/20 outline-none"
+                                placeholder={`Написать ${activeConv.target_username}...`}
+                                value={dmInput}
+                                onChange={(e) => setDmInput(e.target.value)}
+                                onKeyDown={handleDmKeyDown}
+                                disabled={dmLoading}
+                              />
+                              <button
+                                onClick={handleDmSend}
+                                disabled={!dmInput.trim() || dmLoading}
+                                className="w-7 h-7 rounded-lg bg-gold/20 hover:bg-gold/30 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 flex-shrink-0"
+                              >
+                                {dmLoading ? (
+                                  <Icon name="Loader2" size={13} color="#C9A84C" className="animate-spin" />
+                                ) : (
+                                  <Icon name="Send" size={13} color="#C9A84C" />
+                                )}
+                              </button>
+                            </div>
+                            <div className="mt-2 text-center text-white/15 text-[10px] tracking-wide flex items-center justify-center gap-1.5">
+                              <Icon name="Lock" size={9} color="#ffffff20" />
+                              Только вы и {activeConv.target_username} видите эти сообщения
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
                 </>
               )}
             </div>
