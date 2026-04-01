@@ -28,6 +28,24 @@ function getSessionId(): string {
   return sid;
 }
 
+function getSavedUser(): User | null {
+  try {
+    const raw = localStorage.getItem("chat_user");
+    if (!raw) return null;
+    return JSON.parse(raw) as User;
+  } catch {
+    return null;
+  }
+}
+
+function saveUser(user: User) {
+  localStorage.setItem("chat_user", JSON.stringify(user));
+}
+
+function clearUser() {
+  localStorage.removeItem("chat_user");
+}
+
 function formatTime(iso: string) {
   const d = new Date(iso);
   return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
@@ -35,7 +53,7 @@ function formatTime(iso: string) {
 
 export default function Chat() {
   const [open, setOpen] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(getSavedUser);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -139,6 +157,7 @@ export default function Chat() {
       if (!res.ok) throw new Error("Join failed");
       const data = await res.json();
       setUser(data.user);
+      saveUser(data.user);
     } catch (_) {
       // ignore
     } finally {
@@ -230,12 +249,23 @@ export default function Chat() {
                 <span className="text-white/30 text-xs">{onlineCount} онлайн</span>
               )}
             </div>
-            <button
-              onClick={() => setOpen(false)}
-              className="text-white/30 hover:text-white/70 transition-colors"
-            >
-              <Icon name="X" size={16} />
-            </button>
+            <div className="flex items-center gap-2">
+              {user && (
+                <button
+                  onClick={() => { clearUser(); setUser(null); setMessages([]); setLastSeen(null); }}
+                  className="text-white/25 hover:text-white/60 transition-colors text-xs"
+                  title="Выйти из чата"
+                >
+                  <Icon name="LogOut" size={14} />
+                </button>
+              )}
+              <button
+                onClick={() => setOpen(false)}
+                className="text-white/30 hover:text-white/70 transition-colors"
+              >
+                <Icon name="X" size={16} />
+              </button>
+            </div>
           </div>
 
           {/* Join form */}
