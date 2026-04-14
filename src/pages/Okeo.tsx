@@ -295,11 +295,8 @@ export default function Okeo() {
     let lastError = "";
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const params = new URLSearchParams({ username: name, password: pwd });
-        const res = await fetch(`${API_URL}?action=${authMode}`, {
-          method: "POST",
-          body: params,
-        });
+        const params = new URLSearchParams({ action: authMode, username: name, password: pwd });
+        const res = await fetch(`${API_URL}?${params.toString()}`);
         const data = await res.json();
         if (!res.ok) {
           setAuthError(data.error || "Ошибка входа");

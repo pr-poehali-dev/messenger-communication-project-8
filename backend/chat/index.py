@@ -99,10 +99,10 @@ def handler(event, context):
     try:
         cur = conn.cursor()
 
-        # POST ?action=register
-        if action == "register" and method == "POST":
-            username = (body.get("username") or "").strip()[:50]
-            password = (body.get("password") or "").strip()
+        # POST/GET ?action=register
+        if action == "register" and method in ("POST", "GET"):
+            username = (query_params.get("username") or body.get("username") or "").strip()[:50]
+            password = (query_params.get("password") or body.get("password") or "").strip()
             if not username or len(username) < 2:
                 return json_response({"error": "Имя пользователя минимум 2 символа"}, 400)
             if not password or len(password) < 4:
@@ -126,10 +126,10 @@ def handler(event, context):
             user = {"id": str(row[0]), "username": row[1], "color": row[2], "session_id": row[3]}
             return json_response({"user": user, "session_id": new_sid})
 
-        # POST ?action=login
-        if action == "login" and method == "POST":
-            username = (body.get("username") or "").strip()
-            password = (body.get("password") or "").strip()
+        # POST/GET ?action=login
+        if action == "login" and method in ("POST", "GET"):
+            username = (query_params.get("username") or body.get("username") or "").strip()
+            password = (query_params.get("password") or body.get("password") or "").strip()
             if not username or not password:
                 return json_response({"error": "Введите логин и пароль"}, 400)
 
