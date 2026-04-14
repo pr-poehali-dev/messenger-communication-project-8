@@ -107,24 +107,21 @@ export default function Okeo() {
     return () => clearTimeout(t);
   }, []);
 
-  // Автовосстановление сессии по session_id (с retry)
+  // Автовосстановление сессии по session_id (GET, без preflight)
   useEffect(() => {
     const sid = localStorage.getItem("chat_session_id");
     if (!sid || !sid.startsWith("auth_")) return;
     const restore = async () => {
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 4; i++) {
         try {
-          const res = await fetch(`${API_URL}?action=join&sid=${encodeURIComponent(sid)}`, {
-            method: "POST",
-            body: new URLSearchParams(),
-          });
+          const res = await fetch(`${API_URL}?action=join&sid=${encodeURIComponent(sid)}`);
           if (res.ok) {
             const data = await res.json();
-            setUser(data.user);
+            if (data.user) setUser(data.user);
           }
           return;
         } catch {
-          if (i < 2) await new Promise((r) => setTimeout(r, 1000));
+          if (i < 3) await new Promise((r) => setTimeout(r, 800 * (i + 1)));
         }
       }
     };

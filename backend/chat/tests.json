@@ -1,28 +1,24 @@
 {
   "tests": [
     {
-      "name": "Login with correct password",
-      "method": "POST",
-      "path": "/?action=login",
-      "body": { "username": "ТестРег77", "password": "test1234" },
+      "name": "Login with correct password (GET)",
+      "method": "GET",
+      "path": "/?action=login&username=%D0%A2%D0%B5%D1%81%D1%82%D0%A0%D0%B5%D0%B377&password=test1234",
       "expectedStatus": 200,
       "expectedBody": { "session_id": "string" },
       "bodyMatcher": "partial"
     },
     {
       "name": "Login with wrong password",
-      "method": "POST",
-      "path": "/?action=login",
-      "body": { "username": "ТестРег77", "password": "wrong" },
+      "method": "GET",
+      "path": "/?action=login&username=%D0%A2%D0%B5%D1%81%D1%82%D0%A0%D0%B5%D0%B377&password=wrong",
       "expectedStatus": 401
     },
     {
-      "name": "Join chat (anonymous)",
-      "method": "POST",
-      "path": "/?action=join",
-      "headers": { "X-Session-Id": "test-session-123" },
-      "body": { "username": "ТестовыйПользователь" },
-      "expectedStatus": 200
+      "name": "Join by unknown session (GET)",
+      "method": "GET",
+      "path": "/?action=join&sid=auth_nonexistent000000000000000000000",
+      "expectedStatus": 401
     },
     {
       "name": "Get messages",

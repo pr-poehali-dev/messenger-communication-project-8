@@ -144,10 +144,21 @@ def handler(event, context):
             user = {"id": str(row[0]), "username": row[1], "color": row[2], "session_id": new_sid}
             return json_response({"user": user, "session_id": new_sid})
 
-        # POST ?action=join
-        if action == "join" and method == "POST":
+        # GET/POST ?action=join — восстановление сессии
+        if action == "join" and method in ("GET", "POST"):
             if not session_id:
                 return json_response({"error": "No session id"}, 400)
+
+            # Если это auth_ сессия — просто найти пользователя
+            if session_id.startswith("auth_"):
+                cur.execute(f"SELECT id, username, color, session_id FROM chat_users WHERE session_id = {esc(session_id)}")
+                row = cur.fetchone()
+                if not row:
+                    return json_response({"error": "Session not found"}, 401)
+                cur.execute(f"UPDATE chat_users SET last_seen = NOW() WHERE session_id = {esc(session_id)}")
+                conn.commit()
+                user = {"id": str(row[0]), "username": row[1], "color": row[2], "session_id": row[3]}
+                return json_response({"user": user})
 
             username = (body.get("username") or random_username()).strip()[:50]
             color = random_color()
