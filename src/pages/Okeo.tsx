@@ -788,19 +788,24 @@ export default function Okeo() {
                       <span className="text-white/25 text-xs ml-1">Live</span>
                     </div>
                   </div>
-                  <div className="flex flex-col items-center justify-center flex-1 px-8 gap-5">
-                    <div className="w-16 h-16 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center mb-2">
-                      <Icon name="KeyRound" size={28} color="#C9A84C" />
-                    </div>
-                    <div className="text-center">
-                      <div className="text-white/80 font-medium text-lg mb-1">
+                  <div
+                    className="flex flex-col items-center justify-center flex-1 px-8 gap-5 relative overflow-hidden"
+                    style={{
+                      backgroundImage: "url(https://cdn.poehali.dev/projects/d89b477e-65e2-4acd-811f-8c4871d901ea/bucket/a3de9951-0609-4cf5-a66d-e388039052c2.png)",
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                    }}
+                  >
+                    <div className="absolute inset-0 bg-black/40" />
+                    <div className="relative z-10 text-center">
+                      <div className="text-white/90 font-semibold text-xl mb-1">
                         {authMode === "login" ? "Вход в аккаунт" : "Регистрация"}
                       </div>
-                      <div className="text-white/30 text-sm">
+                      <div className="text-white/40 text-sm">
                         {authMode === "login" ? "Введите логин и пароль" : "Придумайте логин и пароль"}
                       </div>
                     </div>
-                    <div className="w-full max-w-sm space-y-3">
+                    <div className="relative z-10 w-full max-w-sm space-y-3">
                       {/* Поле логина */}
                       <div className="relative">
                         <input
