@@ -107,20 +107,29 @@ export default function Okeo() {
     return () => clearTimeout(t);
   }, []);
 
-  // Автовосстановление сессии по session_id
+  // Автовосстановление сессии по session_id (с retry)
   useEffect(() => {
     const sid = localStorage.getItem("chat_session_id");
     if (!sid || !sid.startsWith("auth_")) return;
-    fetch(`${API_URL}?action=join`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Session-Id": sid },
-      body: JSON.stringify({}),
-    }).then(async (res) => {
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data.user);
+    const restore = async () => {
+      for (let i = 0; i < 3; i++) {
+        try {
+          const res = await fetch(`${API_URL}?action=join`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Session-Id": sid },
+            body: JSON.stringify({}),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setUser(data.user);
+          }
+          return;
+        } catch {
+          if (i < 2) await new Promise((r) => setTimeout(r, 1000));
+        }
       }
-    }).catch(() => {});
+    };
+    restore();
   }, []);
 
   const scrollToBottom = () => {
@@ -286,24 +295,34 @@ export default function Okeo() {
     if (!pwd) { setAuthError("Введите пароль"); return; }
     setAuthError("");
     setJoining(true);
-    try {
-      const res = await fetch(`${API_URL}?action=${authMode}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: name, password: pwd }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setAuthError(data.error || "Ошибка входа");
+    let lastError = "";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(`${API_URL}?action=${authMode}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: name, password: pwd }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setAuthError(data.error || "Ошибка входа");
+          setJoining(false);
+          return;
+        }
+        localStorage.setItem("chat_session_id", data.session_id);
+        setUser(data.user);
+        setJoining(false);
         return;
+      } catch {
+        lastError = "Ошибка соединения, повторяю...";
+        if (attempt < 2) {
+          setAuthError(`Подключаюсь... (попытка ${attempt + 2}/3)`);
+          await new Promise((r) => setTimeout(r, 1200));
+        }
       }
-      localStorage.setItem("chat_session_id", data.session_id);
-      setUser(data.user);
-    } catch {
-      setAuthError("Ошибка соединения");
-    } finally {
-      setJoining(false);
     }
+    setAuthError(lastError || "Не удалось подключиться. Попробуйте ещё раз.");
+    setJoining(false);
   };
 
   const handleSend = async () => {
