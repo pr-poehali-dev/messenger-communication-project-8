@@ -116,7 +116,7 @@ export default function Okeo() {
         try {
           const res = await fetch(`${API_URL}?action=join&sid=${encodeURIComponent(sid)}`, {
             method: "POST",
-            body: JSON.stringify({}),
+            body: new URLSearchParams(),
           });
           if (res.ok) {
             const data = await res.json();
@@ -295,9 +295,10 @@ export default function Okeo() {
     let lastError = "";
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
+        const params = new URLSearchParams({ username: name, password: pwd });
         const res = await fetch(`${API_URL}?action=${authMode}`, {
           method: "POST",
-          body: JSON.stringify({ username: name, password: pwd }),
+          body: params,
         });
         const data = await res.json();
         if (!res.ok) {
@@ -340,7 +341,7 @@ export default function Okeo() {
     try {
       const res = await fetch(`${API_URL}?action=send&sid=${encodeURIComponent(sessionId)}`, {
         method: "POST",
-        body: JSON.stringify({ text }),
+        body: new URLSearchParams({ text }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -369,7 +370,7 @@ export default function Okeo() {
     try {
       const res = await fetch(`${API_URL}?action=dm_open&sid=${encodeURIComponent(sessionId)}`, {
         method: "POST",
-        body: JSON.stringify({ target_user_id: targetUser.id }),
+        body: new URLSearchParams({ target_user_id: targetUser.id }),
       });
       if (!res.ok) throw new Error("Failed");
       const data = await res.json();
@@ -406,7 +407,7 @@ export default function Okeo() {
     try {
       const res = await fetch(`${API_URL}?action=dm_send&sid=${encodeURIComponent(sessionId)}`, {
         method: "POST",
-        body: JSON.stringify({ conv_id: activeConv.id, text }),
+        body: new URLSearchParams({ conv_id: activeConv.id, text }),
       });
       if (res.ok) {
         const data = await res.json();

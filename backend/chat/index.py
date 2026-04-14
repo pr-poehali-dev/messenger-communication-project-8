@@ -84,11 +84,16 @@ def handler(event, context):
     if method == "OPTIONS":
         return {"statusCode": 204, "headers": cors_headers(), "body": ""}
 
-    body_raw = event.get("body", "{}")
+    body_raw = event.get("body", "") or ""
     try:
-        body = json.loads(body_raw) if body_raw else {}
+        body = json.loads(body_raw)
     except Exception:
-        body = {}
+        try:
+            from urllib.parse import parse_qs
+            parsed = parse_qs(body_raw)
+            body = {k: v[0] for k, v in parsed.items()}
+        except Exception:
+            body = {}
 
     conn = psycopg2.connect(DATABASE_URL)
     try:

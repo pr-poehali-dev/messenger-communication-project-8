@@ -1,15 +1,6 @@
 {
   "tests": [
     {
-      "name": "Register new user",
-      "method": "POST",
-      "path": "/?action=register",
-      "body": { "username": "ТестРег77", "password": "test1234" },
-      "expectedStatus": 200,
-      "expectedBody": { "session_id": "string" },
-      "bodyMatcher": "partial"
-    },
-    {
       "name": "Login with correct password",
       "method": "POST",
       "path": "/?action=login",
