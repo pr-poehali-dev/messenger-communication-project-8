@@ -450,7 +450,7 @@ export default function Okeo() {
             <Icon name="MessageSquare" size={15} color="#C9A84C" />
           </div>
           <span className="text-white font-semibold text-lg tracking-tight">
-            ОКЕО<span className="text-gold">.</span>
+            Orbit<span className="text-gold">.</span>
           </span>
           <span className="hidden sm:block text-white/20 text-xs tracking-widest uppercase font-light">Мессенджер</span>
         </div>
@@ -511,7 +511,7 @@ export default function Okeo() {
             className="mt-6 text-white/40 text-base font-light leading-relaxed max-w-md tracking-wide"
             style={{ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(16px)", transition: "all 0.9s ease 0.4s" }}
           >
-            ОКЕО — защищённая платформа для командной работы. Мгновенный обмен сообщениями, голосовые каналы и интеграции в одном месте.
+            Orbit — защищённая платформа для командной работы. Мгновенный обмен сообщениями, голосовые каналы и интеграции в одном месте.
           </p>
 
           <div
@@ -562,7 +562,7 @@ export default function Okeo() {
               <div className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
               <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/70" />
               <div className="w-2.5 h-2.5 rounded-full bg-green-500/70" />
-              <span className="ml-3 text-white/20 text-xs tracking-wide">ОКЕО — Общий канал</span>
+              <span className="ml-3 text-white/20 text-xs tracking-wide">Orbit — Общий канал</span>
             </div>
             <div className="flex h-56">
               {/* Sidebar mock */}
@@ -700,7 +700,7 @@ export default function Okeo() {
               <em className="text-gold not-italic">прямо сейчас</em>
             </h2>
             <p className="text-white/35 text-sm leading-relaxed mb-8">
-              Попробуйте мессенджер ОКЕО вживую. Присоединяйтесь к общему каналу или напишите кому-нибудь лично.
+              Попробуйте мессенджер Orbit вживую. Присоединяйтесь к общему каналу или напишите кому-нибудь лично.
             </p>
             <div className="space-y-4">
               {[
@@ -1192,10 +1192,10 @@ export default function Okeo() {
             <div className="w-6 h-6 rounded-md bg-gold/15 border border-gold/25 flex items-center justify-center">
               <Icon name="MessageSquare" size={11} color="#C9A84C" />
             </div>
-            <span className="text-white/50 text-sm font-medium">ОКЕО</span>
+            <span className="text-white/50 text-sm font-medium">Orbit</span>
           </div>
           <div className="text-white/20 text-xs tracking-wide">
-            © 2025 ОКЕО · Корпоративный мессенджер
+            © 2025 Orbit · Корпоративный мессенджер
           </div>
           <div className="flex items-center gap-5 text-white/25 text-xs">
             <a href="#" className="hover:text-white/50 transition-colors">Конфиденциальность</a>
