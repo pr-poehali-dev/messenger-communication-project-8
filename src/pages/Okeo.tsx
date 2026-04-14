@@ -71,9 +71,25 @@ const achievements = [
   { num: "99.9%", label: "Uptime" },
 ];
 
+function getCachedUser(): User | null {
+  try {
+    const raw = localStorage.getItem("chat_cached_user");
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function setCachedUser(u: User | null) {
+  if (u) localStorage.setItem("chat_cached_user", JSON.stringify(u));
+  else localStorage.removeItem("chat_cached_user");
+}
+
 export default function Okeo() {
   const [visible, setVisible] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    const sid = localStorage.getItem("chat_session_id");
+    if (!sid || !sid.startsWith("auth_")) return null;
+    return getCachedUser();
+  });
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -107,25 +123,36 @@ export default function Okeo() {
     return () => clearTimeout(t);
   }, []);
 
-  // Автовосстановление сессии по session_id (GET, без preflight)
+  // Автовосстановление сессии — с прогревом и retry
   useEffect(() => {
     const sid = localStorage.getItem("chat_session_id");
     if (!sid || !sid.startsWith("auth_")) return;
+    let cancelled = false;
     const restore = async () => {
-      for (let i = 0; i < 4; i++) {
+      // Прогрев функции лёгким запросом
+      try { await fetch(`${API_URL}?action=online`); } catch { /* ignore */ }
+      const delays = [500, 1000, 2000, 3000, 5000];
+      for (let i = 0; i < 10; i++) {
+        if (cancelled) return;
         try {
           const res = await fetch(`${API_URL}?action=join&sid=${encodeURIComponent(sid)}`);
+          if (cancelled) return;
           if (res.ok) {
             const data = await res.json();
-            if (data.user) setUser(data.user);
+            if (data.user) { setUser(data.user); setCachedUser(data.user); }
+          } else {
+            setCachedUser(null);
+            setUser(null);
           }
           return;
         } catch {
-          if (i < 3) await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+          const delay = delays[Math.min(i, delays.length - 1)];
+          if (i < 9) await new Promise((r) => setTimeout(r, delay));
         }
       }
     };
     restore();
+    return () => { cancelled = true; };
   }, []);
 
   const scrollToBottom = () => {
@@ -274,6 +301,7 @@ export default function Okeo() {
 
   const handleLogout = () => {
     localStorage.removeItem("chat_session_id");
+    localStorage.removeItem("chat_cached_user");
     setUser(null);
     setMessages([]);
     setUsername("");
@@ -289,8 +317,16 @@ export default function Okeo() {
     if (!pwd) { setAuthError("Введите пароль"); return; }
     setAuthError("");
     setJoining(true);
-    let lastError = "";
-    for (let attempt = 0; attempt < 3; attempt++) {
+
+    // Прогрев функции перед входом
+    try { await fetch(`${API_URL}?action=online`); } catch { /* ignore */ }
+
+    const delays = [0, 800, 1500, 2500, 4000];
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (attempt > 0) {
+        setAuthError(`Подключаюсь... (попытка ${attempt + 1}/5)`);
+        await new Promise((r) => setTimeout(r, delays[attempt]));
+      }
       try {
         const params = new URLSearchParams({ action: authMode, username: name, password: pwd });
         const res = await fetch(`${API_URL}?${params.toString()}`);
@@ -301,18 +337,15 @@ export default function Okeo() {
           return;
         }
         localStorage.setItem("chat_session_id", data.session_id);
+        setCachedUser(data.user);
         setUser(data.user);
         setJoining(false);
         return;
       } catch {
-        lastError = "Ошибка соединения, повторяю...";
-        if (attempt < 2) {
-          setAuthError(`Подключаюсь... (попытка ${attempt + 2}/3)`);
-          await new Promise((r) => setTimeout(r, 1200));
-        }
+        // продолжаем retry
       }
     }
-    setAuthError(lastError || "Не удалось подключиться. Попробуйте ещё раз.");
+    setAuthError("Не удалось подключиться. Проверьте интернет и попробуйте снова.");
     setJoining(false);
   };
 
