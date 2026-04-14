@@ -809,12 +809,12 @@ export default function Okeo() {
                       {/* Поле логина */}
                       <div className="relative">
                         <input
-                          className={`w-full bg-white/5 border rounded-xl px-4 py-3 pr-10 text-white/80 placeholder:text-white/20 text-sm outline-none transition-all duration-200 ${
+                          className={`w-full border rounded-xl px-4 py-3 pr-10 text-white placeholder:text-white/30 text-sm outline-none transition-all duration-200 ${
                             username.length >= 2
-                              ? "border-gold/40 bg-gold/5"
+                              ? "border-purple-400/60 bg-purple-500/20"
                               : username.length > 0
-                              ? "border-white/20"
-                              : "border-white/10"
+                              ? "border-white/20 bg-white/10"
+                              : "border-white/10 bg-white/8"
                           }`}
                           placeholder="Имя пользователя"
                           value={username}
@@ -825,11 +825,11 @@ export default function Okeo() {
                         />
                         {username.length >= 2 && (
                           <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                            <Icon name="Check" size={14} color="#C9A84C" />
+                            <Icon name="Check" size={14} color="#a78bfa" />
                           </div>
                         )}
                         {username.length > 0 && username.length < 2 && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 text-[10px]">
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 text-[10px]">
                             ещё {2 - username.length}
                           </div>
                         )}
@@ -839,12 +839,12 @@ export default function Okeo() {
                       <div className="relative">
                         <input
                           type="password"
-                          className={`w-full bg-white/5 border rounded-xl px-4 py-3 pr-10 text-white/80 placeholder:text-white/20 text-sm outline-none transition-all duration-200 ${
+                          className={`w-full border rounded-xl px-4 py-3 pr-10 text-white placeholder:text-white/30 text-sm outline-none transition-all duration-200 ${
                             password.length >= 4
-                              ? "border-gold/40 bg-gold/5"
+                              ? "border-purple-400/60 bg-purple-500/20"
                               : password.length > 0
-                              ? "border-white/20"
-                              : "border-white/10"
+                              ? "border-white/20 bg-white/10"
+                              : "border-white/10 bg-white/8"
                           }`}
                           placeholder="Пароль"
                           value={password}
@@ -855,34 +855,35 @@ export default function Okeo() {
                         />
                         {password.length >= 4 && (
                           <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                            <Icon name="Check" size={14} color="#C9A84C" />
+                            <Icon name="Check" size={14} color="#a78bfa" />
                           </div>
                         )}
                         {authMode === "register" && password.length > 0 && password.length < 4 && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 text-[10px]">
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 text-[10px]">
                             ещё {4 - password.length}
                           </div>
                         )}
                       </div>
 
                       {authError && (
-                        <div className="text-red-400/80 text-xs text-center px-2">{authError}</div>
+                        <div className="text-red-300/90 text-xs text-center px-2">{authError}</div>
                       )}
                       <button
                         onClick={handleAuth}
                         disabled={joining || username.length < 2 || password.length < (authMode === "register" ? 4 : 1)}
-                        className="w-full py-3 border text-sm tracking-widest uppercase rounded-xl transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed bg-gold/15 hover:bg-gold/25 border-gold/30 text-gold"
+                        className="w-full py-3 text-sm tracking-widest uppercase rounded-xl transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium"
+                        style={{ background: "linear-gradient(135deg, #7c3aed, #6d28d9, #5b21b6)", boxShadow: "0 4px 20px rgba(124,58,237,0.4)" }}
                       >
                         {joining ? (
-                          <Icon name="Loader2" size={14} color="#C9A84C" className="animate-spin" />
+                          <Icon name="Loader2" size={14} color="white" className="animate-spin" />
                         ) : (
-                          <Icon name="LogIn" size={14} color="#C9A84C" />
+                          <Icon name="LogIn" size={14} color="white" />
                         )}
                         {joining ? "Загрузка..." : authMode === "login" ? "Войти" : "Зарегистрироваться"}
                       </button>
                       <button
                         onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }}
-                        className="w-full text-white/30 text-xs hover:text-white/60 transition-colors py-1"
+                        className="w-full text-purple-300/60 text-xs hover:text-purple-200 transition-colors py-1"
                       >
                         {authMode === "login" ? "Нет аккаунта? Зарегистрироваться" : "Уже есть аккаунт? Войти"}
                       </button>
