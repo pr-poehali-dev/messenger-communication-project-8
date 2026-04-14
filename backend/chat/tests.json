@@ -1,7 +1,25 @@
 {
   "tests": [
     {
-      "name": "Join chat",
+      "name": "Register new user",
+      "method": "POST",
+      "path": "/?action=register",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "username": "ТестРег99", "password": "test1234" },
+      "expectedStatus": 200,
+      "expectedBody": { "session_id": "string" },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Login with wrong password",
+      "method": "POST",
+      "path": "/?action=login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "username": "ТестРег99", "password": "wrong" },
+      "expectedStatus": 401
+    },
+    {
+      "name": "Join chat (anonymous)",
       "method": "POST",
       "path": "/?action=join",
       "headers": { "X-Session-Id": "test-session-123", "Content-Type": "application/json" },

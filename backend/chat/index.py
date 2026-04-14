@@ -2,6 +2,8 @@ import os
 import json
 import psycopg2
 import random
+import hashlib
+import secrets
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 ROOM_ID = "00000000-0000-0000-0000-000000000001"
@@ -50,6 +52,20 @@ def esc(val):
     return "'" + str(val).replace("'", "''") + "'"
 
 
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    h = hashlib.sha256((salt + password).encode()).hexdigest()
+    return f"{salt}:{h}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        salt, h = stored.split(":", 1)
+        return hashlib.sha256((salt + password).encode()).hexdigest() == h
+    except Exception:
+        return False
+
+
 def handler(event, context):
     method = event.get("method", event.get("httpMethod", "GET")).upper()
 
@@ -73,6 +89,51 @@ def handler(event, context):
     conn = psycopg2.connect(DATABASE_URL)
     try:
         cur = conn.cursor()
+
+        # POST ?action=register
+        if action == "register" and method == "POST":
+            username = (body.get("username") or "").strip()[:50]
+            password = (body.get("password") or "").strip()
+            if not username or len(username) < 2:
+                return json_response({"error": "Имя пользователя минимум 2 символа"}, 400)
+            if not password or len(password) < 4:
+                return json_response({"error": "Пароль минимум 4 символа"}, 400)
+
+            cur.execute(f"SELECT id FROM chat_users WHERE username = {esc(username)} AND password_hash IS NOT NULL")
+            if cur.fetchone():
+                return json_response({"error": "Имя уже занято"}, 409)
+
+            color = random_color()
+            pwd_hash = hash_password(password)
+            new_sid = f"auth_{secrets.token_hex(24)}"
+
+            cur.execute(f"""
+                INSERT INTO chat_users (username, color, session_id, password_hash, last_seen)
+                VALUES ({esc(username)}, {esc(color)}, {esc(new_sid)}, {esc(pwd_hash)}, NOW())
+                RETURNING id, username, color, session_id
+            """)
+            row = cur.fetchone()
+            conn.commit()
+            user = {"id": str(row[0]), "username": row[1], "color": row[2], "session_id": row[3]}
+            return json_response({"user": user, "session_id": new_sid})
+
+        # POST ?action=login
+        if action == "login" and method == "POST":
+            username = (body.get("username") or "").strip()
+            password = (body.get("password") or "").strip()
+            if not username or not password:
+                return json_response({"error": "Введите логин и пароль"}, 400)
+
+            cur.execute(f"SELECT id, username, color, session_id, password_hash FROM chat_users WHERE username = {esc(username)} AND password_hash IS NOT NULL")
+            row = cur.fetchone()
+            if not row or not verify_password(password, row[4]):
+                return json_response({"error": "Неверный логин или пароль"}, 401)
+
+            new_sid = f"auth_{secrets.token_hex(24)}"
+            cur.execute(f"UPDATE chat_users SET session_id = {esc(new_sid)}, last_seen = NOW() WHERE id = {esc(str(row[0]))}")
+            conn.commit()
+            user = {"id": str(row[0]), "username": row[1], "color": row[2], "session_id": new_sid}
+            return json_response({"user": user, "session_id": new_sid})
 
         # POST ?action=join
         if action == "join" and method == "POST":

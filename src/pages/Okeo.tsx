@@ -49,12 +49,7 @@ interface Conversation {
 }
 
 function getSessionId(): string {
-  let sid = localStorage.getItem("chat_session_id");
-  if (!sid) {
-    sid = `sess_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    localStorage.setItem("chat_session_id", sid);
-  }
-  return sid;
+  return localStorage.getItem("chat_session_id") || "";
 }
 
 function formatTime(iso: string) {
@@ -84,6 +79,9 @@ export default function Okeo() {
   const [loading, setLoading] = useState(false);
   const [joining, setJoining] = useState(false);
   const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authError, setAuthError] = useState("");
   const [onlineCount, setOnlineCount] = useState(0);
   const [lastSeen, setLastSeen] = useState<string | null>(null);
 
@@ -107,6 +105,22 @@ export default function Okeo() {
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 80);
     return () => clearTimeout(t);
+  }, []);
+
+  // Автовосстановление сессии по session_id
+  useEffect(() => {
+    const sid = localStorage.getItem("chat_session_id");
+    if (!sid || !sid.startsWith("auth_")) return;
+    fetch(`${API_URL}?action=join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Session-Id": sid },
+      body: JSON.stringify({}),
+    }).then(async (res) => {
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data.user);
+      }
+    }).catch(() => {});
   }, []);
 
   const scrollToBottom = () => {
@@ -255,20 +269,38 @@ export default function Okeo() {
     if (user) setTimeout(() => inputRef.current?.focus(), 100);
   }, [user]);
 
-  const handleJoin = async () => {
-    const name = username.trim() || undefined;
+  const handleLogout = () => {
+    localStorage.removeItem("chat_session_id");
+    setUser(null);
+    setMessages([]);
+    setUsername("");
+    setPassword("");
+    setAuthError("");
+    setAuthMode("login");
+  };
+
+  const handleAuth = async () => {
+    const name = username.trim();
+    const pwd = password.trim();
+    if (!name) { setAuthError("Введите имя пользователя"); return; }
+    if (!pwd) { setAuthError("Введите пароль"); return; }
+    setAuthError("");
     setJoining(true);
     try {
-      const res = await fetch(`${API_URL}?action=join`, {
+      const res = await fetch(`${API_URL}?action=${authMode}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Session-Id": sessionId },
-        body: JSON.stringify({ username: name }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: name, password: pwd }),
       });
-      if (!res.ok) throw new Error("Join failed");
       const data = await res.json();
+      if (!res.ok) {
+        setAuthError(data.error || "Ошибка входа");
+        return;
+      }
+      localStorage.setItem("chat_session_id", data.session_id);
       setUser(data.user);
     } catch {
-      // ignore
+      setAuthError("Ошибка соединения");
     } finally {
       setJoining(false);
     }
@@ -748,23 +780,41 @@ export default function Okeo() {
                   </div>
                   <div className="flex flex-col items-center justify-center flex-1 px-8 gap-5">
                     <div className="w-16 h-16 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center mb-2">
-                      <Icon name="MessageSquare" size={28} color="#C9A84C" />
+                      <Icon name="KeyRound" size={28} color="#C9A84C" />
                     </div>
                     <div className="text-center">
-                      <div className="text-white/80 font-medium text-lg mb-1">Присоединиться к чату</div>
-                      <div className="text-white/30 text-sm">Введите имя или оставьте поле пустым</div>
+                      <div className="text-white/80 font-medium text-lg mb-1">
+                        {authMode === "login" ? "Вход в аккаунт" : "Регистрация"}
+                      </div>
+                      <div className="text-white/30 text-sm">
+                        {authMode === "login" ? "Введите логин и пароль" : "Придумайте логин и пароль"}
+                      </div>
                     </div>
                     <div className="w-full max-w-sm space-y-3">
                       <input
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white/80 placeholder:text-white/20 text-sm outline-none focus:border-gold/30 transition-colors"
-                        placeholder="Ваше имя (необязательно)"
+                        placeholder="Имя пользователя"
                         value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleJoin()}
+                        onChange={(e) => { setUsername(e.target.value); setAuthError(""); }}
+                        onKeyDown={(e) => e.key === "Enter" && handleAuth()}
                         maxLength={50}
+                        autoComplete="username"
                       />
+                      <input
+                        type="password"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white/80 placeholder:text-white/20 text-sm outline-none focus:border-gold/30 transition-colors"
+                        placeholder="Пароль"
+                        value={password}
+                        onChange={(e) => { setPassword(e.target.value); setAuthError(""); }}
+                        onKeyDown={(e) => e.key === "Enter" && handleAuth()}
+                        maxLength={100}
+                        autoComplete={authMode === "login" ? "current-password" : "new-password"}
+                      />
+                      {authError && (
+                        <div className="text-red-400/80 text-xs text-center px-2">{authError}</div>
+                      )}
                       <button
-                        onClick={handleJoin}
+                        onClick={handleAuth}
                         disabled={joining}
                         className="w-full py-3 bg-gold/15 hover:bg-gold/25 border border-gold/30 text-gold text-sm tracking-widest uppercase rounded-xl transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
                       >
@@ -773,7 +823,13 @@ export default function Okeo() {
                         ) : (
                           <Icon name="LogIn" size={14} color="#C9A84C" />
                         )}
-                        {joining ? "Вхожу..." : "Войти в чат"}
+                        {joining ? "Загрузка..." : authMode === "login" ? "Войти" : "Зарегистрироваться"}
+                      </button>
+                      <button
+                        onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }}
+                        className="w-full text-white/30 text-xs hover:text-white/60 transition-colors py-1"
+                      >
+                        {authMode === "login" ? "Нет аккаунта? Зарегистрироваться" : "Уже есть аккаунт? Войти"}
                       </button>
                     </div>
                   </div>
@@ -810,9 +866,16 @@ export default function Okeo() {
                       )}
                     </button>
                     <div className="flex-1" />
-                    <div className="flex items-center gap-1.5 pr-4">
+                    <div className="flex items-center gap-2 pr-3">
                       <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                       <span className="text-white/25 text-xs">{onlineCount} онлайн</span>
+                      <button
+                        onClick={handleLogout}
+                        title="Выйти"
+                        className="ml-1 p-1.5 text-white/20 hover:text-red-400/70 transition-colors rounded-md hover:bg-red-400/10"
+                      >
+                        <Icon name="LogOut" size={12} />
+                      </button>
                     </div>
                   </div>
 
