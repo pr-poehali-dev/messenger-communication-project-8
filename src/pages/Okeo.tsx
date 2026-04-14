@@ -435,8 +435,8 @@ export default function Okeo() {
     <div className="min-h-screen bg-[#0A0A0B] text-white font-ibm overflow-x-hidden">
       {/* Ambient glows */}
       <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[700px] h-[700px] rounded-full bg-gold/8 blur-[140px] animate-glow-pulse" />
-        <div className="absolute bottom-[20%] right-[-5%] w-[400px] h-[400px] rounded-full bg-gold/5 blur-[100px] animate-glow-pulse" style={{ animationDelay: "1.5s" }} />
+        <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[700px] h-[700px] rounded-full bg-purple-600/8 blur-[140px] animate-glow-pulse" />
+        <div className="absolute bottom-[20%] right-[-5%] w-[400px] h-[400px] rounded-full bg-purple-600/5 blur-[100px] animate-glow-pulse" style={{ animationDelay: "1.5s" }} />
         <div className="absolute top-[40%] left-[-5%] w-[300px] h-[300px] rounded-full bg-blue-500/5 blur-[100px]" />
       </div>
 
@@ -446,18 +446,18 @@ export default function Okeo() {
         style={{ opacity: visible ? 1 : 0, transition: "opacity 0.6s ease" }}
       >
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gold/15 border border-gold/30 flex items-center justify-center">
-            <Icon name="MessageSquare" size={15} color="#C9A84C" />
+          <div className="w-8 h-8 rounded-lg bg-purple-500/15 border border-purple-400/30 flex items-center justify-center">
+            <Icon name="MessageSquare" size={15} color="#a78bfa" />
           </div>
           <span className="text-white font-semibold text-lg tracking-tight">
-            Orbit<span className="text-gold">.</span>
+            Orbit<span className="text-purple-400">.</span>
           </span>
           <span className="hidden sm:block text-white/20 text-xs tracking-widest uppercase font-light">Мессенджер</span>
         </div>
         <nav className="hidden md:flex items-center gap-8 text-sm text-white/40 tracking-wide">
-          <a href="#features" className="hover:text-gold transition-colors duration-300">Возможности</a>
-          <a href="#team" className="hover:text-gold transition-colors duration-300">Команда</a>
-          <a href="#messenger" className="hover:text-gold transition-colors duration-300">Чат</a>
+          <a href="#features" className="hover:text-purple-400 transition-colors duration-300">Возможности</a>
+          <a href="#team" className="hover:text-purple-400 transition-colors duration-300">Команда</a>
+          <a href="#messenger" className="hover:text-purple-400 transition-colors duration-300">Чат</a>
         </nav>
         <div className="flex items-center gap-3">
           {onlineCount > 0 && (
@@ -468,7 +468,7 @@ export default function Okeo() {
           )}
           <a
             href="#messenger"
-            className="px-4 py-2 border border-gold/40 text-gold text-xs tracking-widest uppercase hover:bg-gold/10 transition-all duration-300 rounded-sm"
+            className="px-4 py-2 border border-purple-400/40 text-purple-400 text-xs tracking-widest uppercase hover:bg-purple-500/10 transition-all duration-300 rounded-sm"
           >
             Открыть чат
           </a>
@@ -480,10 +480,10 @@ export default function Okeo() {
         {/* Left: text */}
         <div>
           <div
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gold/25 bg-gold/5 mb-8 text-xs text-gold/70 tracking-widest uppercase"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-purple-400/25 bg-purple-500/5 mb-8 text-xs text-purple-400/70 tracking-widest uppercase"
             style={{ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(12px)", transition: "all 0.6s ease 0.1s" }}
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse inline-block" />
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse inline-block" />
             Корпоративный мессенджер нового поколения
           </div>
 
@@ -495,7 +495,7 @@ export default function Okeo() {
             <br />
             <span
               style={{
-                background: "linear-gradient(90deg, #C9A84C 0%, #F0D88A 40%, #C9A84C 70%, #8A6E2F 100%)",
+                background: "linear-gradient(90deg, #a78bfa 0%, #c4b5fd 40%, #a78bfa 70%, #7c3aed 100%)",
                 backgroundSize: "200% auto",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
@@ -520,7 +520,7 @@ export default function Okeo() {
           >
             <a
               href="#messenger"
-              className="group relative px-7 py-3.5 bg-gold text-[#0A0A0B] font-medium text-sm tracking-widest uppercase rounded-sm overflow-hidden hover:scale-105 transition-transform duration-300 inline-flex items-center gap-2"
+              className="group relative px-7 py-3.5 bg-purple-500 text-white font-medium text-sm tracking-widest uppercase rounded-sm overflow-hidden hover:scale-105 transition-transform duration-300 inline-flex items-center gap-2"
             >
               <Icon name="MessageCircle" size={15} />
               Попробовать сейчас
@@ -541,7 +541,7 @@ export default function Okeo() {
           >
             {achievements.map((a) => (
               <div key={a.num}>
-                <div className="text-gold font-cormorant text-2xl font-semibold">{a.num}</div>
+                <div className="text-purple-400 font-cormorant text-2xl font-semibold">{a.num}</div>
                 <div className="text-white/30 text-xs mt-0.5 tracking-wide">{a.label}</div>
               </div>
             ))}
@@ -555,7 +555,7 @@ export default function Okeo() {
         >
           <div
             className="rounded-2xl border border-white/8 overflow-hidden"
-            style={{ background: "rgba(14,14,16,0.9)", backdropFilter: "blur(20px)", boxShadow: "0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(201,168,76,0.08)" }}
+            style={{ background: "rgba(14,14,16,0.9)", backdropFilter: "blur(20px)", boxShadow: "0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(139,92,246,0.12)" }}
           >
             {/* Mock window chrome */}
             <div className="flex items-center gap-2 px-4 py-3 border-b border-white/6">
@@ -569,7 +569,7 @@ export default function Okeo() {
               <div className="w-44 border-r border-white/6 p-3 flex flex-col gap-1">
                 <div className="text-white/20 text-xs px-2 py-1 tracking-widest uppercase mb-1">Каналы</div>
                 {["# общий", "# разработка", "# дизайн", "# маркетинг"].map((ch, i) => (
-                  <div key={ch} className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${i === 0 ? "bg-gold/10 text-gold/80" : "text-white/30 hover:text-white/50"}`}>
+                  <div key={ch} className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${i === 0 ? "bg-purple-500/10 text-purple-400/80" : "text-white/30 hover:text-white/50"}`}>
                     <span>{ch}</span>
                   </div>
                 ))}
@@ -599,7 +599,7 @@ export default function Okeo() {
             <div className="px-3 py-2.5 border-t border-white/6">
               <div className="flex items-center gap-2 bg-white/4 border border-white/8 rounded-lg px-3 py-1.5">
                 <span className="text-white/20 text-xs flex-1">Написать сообщение...</span>
-                <Icon name="Send" size={11} color="#C9A84C" />
+                <Icon name="Send" size={11} color="#a78bfa" />
               </div>
             </div>
           </div>
@@ -637,9 +637,9 @@ export default function Okeo() {
               className="bg-[#0A0A0B] p-8 group hover:bg-white/[0.02] transition-all duration-500 relative overflow-hidden"
               style={{ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(20px)", transition: `all 0.7s ease ${0.1 * i + 0.3}s` }}
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-gold/0 via-gold/0 to-gold/0 group-hover:from-gold/3 transition-all duration-700" />
-              <div className="w-10 h-10 rounded-lg bg-gold/10 border border-gold/20 flex items-center justify-center mb-5 group-hover:bg-gold/15 transition-colors duration-300">
-                <Icon name={f.icon} size={18} color="#C9A84C" />
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-500/0 via-purple-500/0 to-purple-500/0 group-hover:from-purple-500/5 transition-all duration-700" />
+              <div className="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-400/20 flex items-center justify-center mb-5 group-hover:bg-purple-500/20 transition-colors duration-300">
+                <Icon name={f.icon} size={18} color="#a78bfa" />
               </div>
               <h3 className="text-white/85 font-medium text-base mb-2 tracking-wide">{f.title}</h3>
               <p className="text-white/35 text-sm leading-relaxed">{f.desc}</p>
@@ -652,7 +652,7 @@ export default function Okeo() {
       <section id="team" className="relative z-10 max-w-7xl mx-auto px-8 mb-24">
         <div className="mb-12 text-center">
           <h2 className="font-cormorant text-[clamp(2rem,4vw,3.2rem)] font-light text-white/90">
-            Команда <em className="text-gold not-italic">ОКЕО</em>
+            Команда <em className="text-purple-400 not-italic">ОКЕО</em>
           </h2>
           <p className="mt-3 text-white/35 text-sm max-w-md mx-auto">Опытные специалисты, создающие будущее корпоративных коммуникаций</p>
         </div>
@@ -691,13 +691,13 @@ export default function Okeo() {
         <div className="grid lg:grid-cols-5 gap-8 items-start">
           {/* Left: description */}
           <div className="lg:col-span-2 lg:sticky lg:top-8">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-gold/20 bg-gold/5 mb-6 text-xs text-gold/60 tracking-widest uppercase">
-              <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse inline-block" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple-400/20 bg-purple-500/5 mb-6 text-xs text-purple-400/60 tracking-widest uppercase">
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse inline-block" />
               Real-time
             </div>
             <h2 className="font-cormorant text-[clamp(2rem,4vw,3rem)] font-light text-white/90 leading-tight mb-4">
               Общайтесь<br />
-              <em className="text-gold not-italic">прямо сейчас</em>
+              <em className="text-purple-400 not-italic">прямо сейчас</em>
             </h2>
             <p className="text-white/35 text-sm leading-relaxed mb-8">
               Попробуйте мессенджер Orbit вживую. Присоединяйтесь к общему каналу или напишите кому-нибудь лично.
@@ -710,8 +710,8 @@ export default function Okeo() {
                 { icon: "Shield", text: "Сессия сохраняется автоматически" },
               ].map((item) => (
                 <div key={item.text} className="flex items-center gap-3 text-white/40 text-sm">
-                  <div className="w-6 h-6 rounded-md bg-gold/10 flex items-center justify-center flex-shrink-0">
-                    <Icon name={item.icon} size={12} color="#C9A84C" />
+                  <div className="w-6 h-6 rounded-md bg-purple-500/10 flex items-center justify-center flex-shrink-0">
+                    <Icon name={item.icon} size={12} color="#a78bfa" />
                   </div>
                   {item.text}
                 </div>
@@ -734,7 +734,7 @@ export default function Okeo() {
                       key={u.id}
                       onClick={() => handleOpenDm(u)}
                       disabled={openingDm}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/6 bg-white/[0.02] hover:bg-white/[0.05] hover:border-gold/20 transition-all duration-200 group text-left"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/6 bg-white/[0.02] hover:bg-purple-500/5 hover:border-purple-400/20 transition-all duration-200 group text-left"
                     >
                       <div
                         className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-[#0A0A0B]"
@@ -747,7 +747,7 @@ export default function Okeo() {
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                        <Icon name="MessageSquare" size={11} color="#C9A84C" className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <Icon name="MessageSquare" size={11} color="#a78bfa" className="opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
                     </button>
                   ))}
@@ -763,7 +763,7 @@ export default function Okeo() {
               style={{
                 background: "rgba(14,14,16,0.95)",
                 backdropFilter: "blur(20px)",
-                boxShadow: "0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(201,168,76,0.06)",
+                boxShadow: "0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(139,92,246,0.10)",
                 height: "600px",
               }}
             >
@@ -774,7 +774,7 @@ export default function Okeo() {
                   <div className="flex items-center justify-between px-5 py-4 border-b border-white/6 flex-shrink-0">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg bg-gold/15 border border-gold/20 flex items-center justify-center">
-                        <Icon name="Hash" size={14} color="#C9A84C" />
+                        <Icon name="Hash" size={14} color="#a78bfa" />
                       </div>
                       <div>
                         <div className="text-white/80 text-sm font-medium tracking-wide">общий</div>
@@ -898,25 +898,25 @@ export default function Okeo() {
                       onClick={() => setActiveTab("public")}
                       className={`flex items-center gap-2 px-5 py-4 text-sm transition-all duration-200 border-b-2 ${
                         activeTab === "public"
-                          ? "border-gold text-gold/90"
+                          ? "border-purple-400 text-purple-300"
                           : "border-transparent text-white/35 hover:text-white/60"
                       }`}
                     >
-                      <Icon name="Hash" size={13} color={activeTab === "public" ? "#C9A84C" : undefined} />
+                      <Icon name="Hash" size={13} color={activeTab === "public" ? "#a78bfa" : undefined} />
                       общий
                     </button>
                     <button
                       onClick={() => setActiveTab("dm")}
                       className={`flex items-center gap-2 px-5 py-4 text-sm transition-all duration-200 border-b-2 relative ${
                         activeTab === "dm"
-                          ? "border-gold text-gold/90"
+                          ? "border-purple-400 text-purple-300"
                           : "border-transparent text-white/35 hover:text-white/60"
                       }`}
                     >
-                      <Icon name="Lock" size={13} color={activeTab === "dm" ? "#C9A84C" : undefined} />
+                      <Icon name="Lock" size={13} color={activeTab === "dm" ? "#a78bfa" : undefined} />
                       личные
                       {dmUnread > 0 && (
-                        <span className="absolute top-3 right-2 w-4 h-4 rounded-full bg-gold text-[#0A0A0B] text-[9px] font-bold flex items-center justify-center">
+                        <span className="absolute top-3 right-2 w-4 h-4 rounded-full bg-purple-500 text-white text-[9px] font-bold flex items-center justify-center">
                           {dmUnread > 9 ? "9+" : dmUnread}
                         </span>
                       )}
@@ -970,7 +970,7 @@ export default function Okeo() {
                                 <div
                                   className={`px-3 py-2 rounded-xl text-sm leading-relaxed break-words ${
                                     isMe
-                                      ? "bg-gold/15 border border-gold/20 text-white/85 rounded-br-sm"
+                                      ? "bg-purple-500/20 border border-purple-400/30 text-white/85 rounded-br-sm"
                                       : "bg-white/5 border border-white/6 text-white/70 rounded-bl-sm"
                                   }`}
                                 >
@@ -985,7 +985,7 @@ export default function Okeo() {
 
                       {/* Public input */}
                       <div className="flex-shrink-0 px-4 py-4 border-t border-white/6">
-                        <div className="flex items-center gap-2 bg-white/5 border border-white/8 rounded-xl px-4 py-2.5 focus-within:border-gold/30 transition-colors duration-200">
+                        <div className="flex items-center gap-2 bg-white/5 border border-white/8 rounded-xl px-4 py-2.5 focus-within:border-purple-400/40 transition-colors duration-200">
                           <div
                             className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[8px] font-bold text-[#0A0A0B]"
                             style={{ background: user.color }}
@@ -1004,12 +1004,12 @@ export default function Okeo() {
                           <button
                             onClick={handleSend}
                             disabled={!input.trim() || loading}
-                            className="w-7 h-7 rounded-lg bg-gold/20 hover:bg-gold/30 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 flex-shrink-0"
+                            className="w-7 h-7 rounded-lg bg-purple-500/25 hover:bg-purple-500/40 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 flex-shrink-0"
                           >
                             {loading ? (
-                              <Icon name="Loader2" size={13} color="#C9A84C" className="animate-spin" />
+                              <Icon name="Loader2" size={13} color="#a78bfa" className="animate-spin" />
                             ) : (
-                              <Icon name="Send" size={13} color="#C9A84C" />
+                              <Icon name="Send" size={13} color="#a78bfa" />
                             )}
                           </button>
                         </div>
@@ -1026,8 +1026,8 @@ export default function Okeo() {
                       {!activeConv ? (
                         /* No conversation selected */
                         <div className="flex flex-col items-center justify-center flex-1 px-8 gap-4 text-center">
-                          <div className="w-16 h-16 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center">
-                            <Icon name="Lock" size={28} color="#C9A84C" />
+                          <div className="w-16 h-16 rounded-2xl bg-purple-500/10 border border-purple-400/20 flex items-center justify-center">
+                            <Icon name="Lock" size={28} color="#a78bfa" />
                           </div>
                           <div>
                             <div className="text-white/70 font-medium text-base mb-1">Личные сообщения</div>
@@ -1048,7 +1048,7 @@ export default function Okeo() {
                                   key={u.id}
                                   onClick={() => handleOpenDm(u)}
                                   disabled={openingDm}
-                                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/6 bg-white/[0.02] hover:bg-gold/5 hover:border-gold/20 transition-all duration-200 group"
+                                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/6 bg-white/[0.02] hover:bg-purple-500/5 hover:border-purple-400/20 transition-all duration-200 group"
                                 >
                                   <div
                                     className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-bold text-[#0A0A0B]"
@@ -1061,7 +1061,7 @@ export default function Okeo() {
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                                    <Icon name="ChevronRight" size={13} color="#C9A84C" className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    <Icon name="ChevronRight" size={13} color="#a78bfa" className="opacity-0 group-hover:opacity-100 transition-opacity" />
                                   </div>
                                 </button>
                               ))}
@@ -1092,8 +1092,8 @@ export default function Okeo() {
                                 онлайн
                               </div>
                             </div>
-                            <div className="w-7 h-7 rounded-lg bg-gold/10 border border-gold/20 flex items-center justify-center">
-                              <Icon name="Lock" size={12} color="#C9A84C" />
+                            <div className="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-400/20 flex items-center justify-center">
+                              <Icon name="Lock" size={12} color="#a78bfa" />
                             </div>
                           </div>
 
@@ -1125,14 +1125,14 @@ export default function Okeo() {
                                         <span className="text-xs font-medium" style={{ color: msg.sender_color }}>{msg.sender_username}</span>
                                         <span className="text-white/20 text-[10px]">{formatTime(msg.created_at)}</span>
                                         {msg.is_mine && msg.read_at && (
-                                          <Icon name="CheckCheck" size={10} color="#C9A84C" />
+                                          <Icon name="CheckCheck" size={10} color="#a78bfa" />
                                         )}
                                       </div>
                                     )}
                                     <div
                                       className={`px-3 py-2 rounded-xl text-sm leading-relaxed break-words ${
                                         msg.is_mine
-                                          ? "bg-gold/15 border border-gold/20 text-white/85 rounded-br-sm"
+                                          ? "bg-purple-500/20 border border-purple-400/30 text-white/85 rounded-br-sm"
                                           : "bg-white/5 border border-white/6 text-white/70 rounded-bl-sm"
                                       }`}
                                     >
@@ -1147,7 +1147,7 @@ export default function Okeo() {
 
                           {/* DM input */}
                           <div className="flex-shrink-0 px-4 py-4 border-t border-white/6">
-                            <div className="flex items-center gap-2 bg-white/5 border border-white/8 rounded-xl px-4 py-2.5 focus-within:border-gold/30 transition-colors duration-200">
+                            <div className="flex items-center gap-2 bg-white/5 border border-white/8 rounded-xl px-4 py-2.5 focus-within:border-purple-400/40 transition-colors duration-200">
                               <div
                                 className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[8px] font-bold text-[#0A0A0B]"
                                 style={{ background: user.color }}
@@ -1166,12 +1166,12 @@ export default function Okeo() {
                               <button
                                 onClick={handleDmSend}
                                 disabled={!dmInput.trim() || dmLoading}
-                                className="w-7 h-7 rounded-lg bg-gold/20 hover:bg-gold/30 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 flex-shrink-0"
+                                className="w-7 h-7 rounded-lg bg-purple-500/25 hover:bg-purple-500/40 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 flex-shrink-0"
                               >
                                 {dmLoading ? (
-                                  <Icon name="Loader2" size={13} color="#C9A84C" className="animate-spin" />
+                                  <Icon name="Loader2" size={13} color="#a78bfa" className="animate-spin" />
                                 ) : (
-                                  <Icon name="Send" size={13} color="#C9A84C" />
+                                  <Icon name="Send" size={13} color="#a78bfa" />
                                 )}
                               </button>
                             </div>
@@ -1195,8 +1195,8 @@ export default function Okeo() {
       <footer className="relative z-10 border-t border-white/5 px-8 py-10">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-gold/15 border border-gold/25 flex items-center justify-center">
-              <Icon name="MessageSquare" size={11} color="#C9A84C" />
+            <div className="w-6 h-6 rounded-md bg-purple-500/15 border border-purple-400/25 flex items-center justify-center">
+              <Icon name="MessageSquare" size={11} color="#a78bfa" />
             </div>
             <span className="text-white/50 text-sm font-medium">Orbit</span>
           </div>
