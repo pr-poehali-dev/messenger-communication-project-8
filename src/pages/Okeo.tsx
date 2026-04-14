@@ -803,32 +803,72 @@ export default function Okeo() {
                       </div>
                     </div>
                     <div className="w-full max-w-sm space-y-3">
-                      <input
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white/80 placeholder:text-white/20 text-sm outline-none focus:border-gold/30 transition-colors"
-                        placeholder="Имя пользователя"
-                        value={username}
-                        onChange={(e) => { setUsername(e.target.value); setAuthError(""); }}
-                        onKeyDown={(e) => e.key === "Enter" && handleAuth()}
-                        maxLength={50}
-                        autoComplete="username"
-                      />
-                      <input
-                        type="password"
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white/80 placeholder:text-white/20 text-sm outline-none focus:border-gold/30 transition-colors"
-                        placeholder="Пароль"
-                        value={password}
-                        onChange={(e) => { setPassword(e.target.value); setAuthError(""); }}
-                        onKeyDown={(e) => e.key === "Enter" && handleAuth()}
-                        maxLength={100}
-                        autoComplete={authMode === "login" ? "current-password" : "new-password"}
-                      />
+                      {/* Поле логина */}
+                      <div className="relative">
+                        <input
+                          className={`w-full bg-white/5 border rounded-xl px-4 py-3 pr-10 text-white/80 placeholder:text-white/20 text-sm outline-none transition-all duration-200 ${
+                            username.length >= 2
+                              ? "border-gold/40 bg-gold/5"
+                              : username.length > 0
+                              ? "border-white/20"
+                              : "border-white/10"
+                          }`}
+                          placeholder="Имя пользователя"
+                          value={username}
+                          onChange={(e) => { setUsername(e.target.value); setAuthError(""); }}
+                          onKeyDown={(e) => e.key === "Enter" && handleAuth()}
+                          maxLength={50}
+                          autoComplete="username"
+                        />
+                        {username.length >= 2 && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <Icon name="Check" size={14} color="#C9A84C" />
+                          </div>
+                        )}
+                        {username.length > 0 && username.length < 2 && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 text-[10px]">
+                            ещё {2 - username.length}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Поле пароля */}
+                      <div className="relative">
+                        <input
+                          type="password"
+                          className={`w-full bg-white/5 border rounded-xl px-4 py-3 pr-10 text-white/80 placeholder:text-white/20 text-sm outline-none transition-all duration-200 ${
+                            password.length >= 4
+                              ? "border-gold/40 bg-gold/5"
+                              : password.length > 0
+                              ? "border-white/20"
+                              : "border-white/10"
+                          }`}
+                          placeholder="Пароль"
+                          value={password}
+                          onChange={(e) => { setPassword(e.target.value); setAuthError(""); }}
+                          onKeyDown={(e) => e.key === "Enter" && handleAuth()}
+                          maxLength={100}
+                          autoComplete={authMode === "login" ? "current-password" : "new-password"}
+                        />
+                        {password.length >= 4 && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <Icon name="Check" size={14} color="#C9A84C" />
+                          </div>
+                        )}
+                        {authMode === "register" && password.length > 0 && password.length < 4 && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 text-[10px]">
+                            ещё {4 - password.length}
+                          </div>
+                        )}
+                      </div>
+
                       {authError && (
                         <div className="text-red-400/80 text-xs text-center px-2">{authError}</div>
                       )}
                       <button
                         onClick={handleAuth}
-                        disabled={joining}
-                        className="w-full py-3 bg-gold/15 hover:bg-gold/25 border border-gold/30 text-gold text-sm tracking-widest uppercase rounded-xl transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
+                        disabled={joining || username.length < 2 || password.length < (authMode === "register" ? 4 : 1)}
+                        className="w-full py-3 border text-sm tracking-widest uppercase rounded-xl transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed bg-gold/15 hover:bg-gold/25 border-gold/30 text-gold"
                       >
                         {joining ? (
                           <Icon name="Loader2" size={14} color="#C9A84C" className="animate-spin" />
