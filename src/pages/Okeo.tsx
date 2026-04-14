@@ -114,9 +114,8 @@ export default function Okeo() {
     const restore = async () => {
       for (let i = 0; i < 3; i++) {
         try {
-          const res = await fetch(`${API_URL}?action=join`, {
+          const res = await fetch(`${API_URL}?action=join&sid=${encodeURIComponent(sid)}`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "X-Session-Id": sid },
             body: JSON.stringify({}),
           });
           if (res.ok) {
@@ -179,9 +178,7 @@ export default function Okeo() {
   const fetchDmUnread = useCallback(async () => {
     if (!sessionId) return;
     try {
-      const res = await fetch(`${API_URL}?action=dm_unread`, {
-        headers: { "X-Session-Id": sessionId },
-      });
+      const res = await fetch(`${API_URL}?action=dm_unread&sid=${encodeURIComponent(sessionId)}`);
       if (!res.ok) return;
       const data = await res.json();
       setDmUnread(data.count || 0);
@@ -193,9 +190,9 @@ export default function Okeo() {
   const fetchDmMessages = useCallback(async (convId: string, since?: string) => {
     try {
       const url = since
-        ? `${API_URL}?action=dm_messages&conv_id=${encodeURIComponent(convId)}&since=${encodeURIComponent(since)}&limit=50`
-        : `${API_URL}?action=dm_messages&conv_id=${encodeURIComponent(convId)}&limit=50`;
-      const res = await fetch(url, { headers: { "X-Session-Id": sessionId } });
+        ? `${API_URL}?action=dm_messages&conv_id=${encodeURIComponent(convId)}&since=${encodeURIComponent(since)}&limit=50&sid=${encodeURIComponent(sessionId)}`
+        : `${API_URL}?action=dm_messages&conv_id=${encodeURIComponent(convId)}&limit=50&sid=${encodeURIComponent(sessionId)}`;
+      const res = await fetch(url);
       if (!res.ok) return undefined;
       const data = await res.json();
       return data.messages as DmMessage[];
@@ -300,7 +297,6 @@ export default function Okeo() {
       try {
         const res = await fetch(`${API_URL}?action=${authMode}`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username: name, password: pwd }),
         });
         const data = await res.json();
@@ -342,9 +338,8 @@ export default function Okeo() {
     setTimeout(scrollToBottom, 50);
 
     try {
-      const res = await fetch(`${API_URL}?action=send`, {
+      const res = await fetch(`${API_URL}?action=send&sid=${encodeURIComponent(sessionId)}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Session-Id": sessionId },
         body: JSON.stringify({ text }),
       });
       if (res.ok) {
@@ -372,9 +367,8 @@ export default function Okeo() {
     if (!user || openingDm) return;
     setOpeningDm(true);
     try {
-      const res = await fetch(`${API_URL}?action=dm_open`, {
+      const res = await fetch(`${API_URL}?action=dm_open&sid=${encodeURIComponent(sessionId)}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Session-Id": sessionId },
         body: JSON.stringify({ target_user_id: targetUser.id }),
       });
       if (!res.ok) throw new Error("Failed");
@@ -410,9 +404,8 @@ export default function Okeo() {
     setTimeout(scrollDmToBottom, 50);
 
     try {
-      const res = await fetch(`${API_URL}?action=dm_send`, {
+      const res = await fetch(`${API_URL}?action=dm_send&sid=${encodeURIComponent(sessionId)}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Session-Id": sessionId },
         body: JSON.stringify({ conv_id: activeConv.id, text }),
       });
       if (res.ok) {

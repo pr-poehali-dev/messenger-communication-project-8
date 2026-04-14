@@ -70,10 +70,14 @@ def handler(event, context):
     method = event.get("method", event.get("httpMethod", "GET")).upper()
 
     headers_in = event.get("headers", {}) or {}
-    session_id = headers_in.get("x-session-id") or headers_in.get("X-Session-Id") or ""
-
     query_params = event.get("queryStringParameters") or {}
     action = query_params.get("action", "")
+    session_id = (
+        headers_in.get("x-session-id")
+        or headers_in.get("X-Session-Id")
+        or query_params.get("sid")
+        or ""
+    )
 
     print(f"[DEBUG] method={method} action={action!r} session={session_id!r}")
 
