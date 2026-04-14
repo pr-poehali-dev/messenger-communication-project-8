@@ -798,7 +798,15 @@ export default function Okeo() {
                   >
                     <div className="absolute inset-0 bg-black/40" />
                     <div className="relative z-10 text-center">
-                      <div className="text-white/90 font-semibold text-xl mb-1">
+                      <div className="flex items-center justify-center gap-2 mb-3">
+                        <div className="w-8 h-8 rounded-lg bg-purple-500/30 border border-purple-400/40 flex items-center justify-center">
+                          <Icon name="MessageSquare" size={15} color="#a78bfa" />
+                        </div>
+                        <span className="text-white font-bold text-2xl tracking-tight">
+                          Orbit<span className="text-purple-400">.</span>
+                        </span>
+                      </div>
+                      <div className="text-white/90 font-semibold text-lg mb-1">
                         {authMode === "login" ? "Вход в аккаунт" : "Регистрация"}
                       </div>
                       <div className="text-white/40 text-sm">
