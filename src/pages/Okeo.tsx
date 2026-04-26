@@ -140,6 +140,7 @@ export default function Okeo() {
   const [dmLastSeen, setDmLastSeen] = useState<string | null>(null);
   const [dmUnread, setDmUnread] = useState(0);
   const [openingDm, setOpeningDm] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("chat_sound") !== "off");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dmMessagesEndRef = useRef<HTMLDivElement>(null);
@@ -286,7 +287,7 @@ export default function Okeo() {
           setLastSeen(newMsgs[newMsgs.length - 1].created_at);
           if (activeTab === "public") setTimeout(scrollToBottom, 50);
           if (document.hidden || activeTab !== "public") {
-            playNotificationSound();
+            if (soundEnabled) playNotificationSound();
             const last = newMsgs[newMsgs.length - 1];
             sendPushNotification("Общий чат", `${last.username}: ${last.text}`);
           }
@@ -340,7 +341,7 @@ export default function Okeo() {
           setTimeout(scrollDmToBottom, 50);
           const incoming = newMsgs.filter((m) => !m.is_mine);
           if (incoming.length > 0 && (document.hidden || activeTab !== "dm")) {
-            playNotificationSound();
+            if (soundEnabled) playNotificationSound();
             const last = incoming[incoming.length - 1];
             sendPushNotification(`Личное сообщение от ${last.sender_username}`, last.text);
           }
@@ -1031,9 +1032,20 @@ export default function Okeo() {
                       <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                       <span className="text-white/25 text-xs">{onlineCount} онлайн</span>
                       <button
+                        onClick={() => setSoundEnabled((v) => {
+                          const next = !v;
+                          localStorage.setItem("chat_sound", next ? "on" : "off");
+                          return next;
+                        })}
+                        title={soundEnabled ? "Выключить звук" : "Включить звук"}
+                        className="p-1.5 text-white/20 hover:text-white/60 transition-colors rounded-md"
+                      >
+                        <Icon name={soundEnabled ? "Volume2" : "VolumeX"} size={12} />
+                      </button>
+                      <button
                         onClick={handleLogout}
                         title="Выйти"
-                        className="ml-1 p-1.5 text-white/20 hover:text-red-400/70 transition-colors rounded-md hover:bg-red-400/10"
+                        className="p-1.5 text-white/20 hover:text-red-400/70 transition-colors rounded-md hover:bg-red-400/10"
                       >
                         <Icon name="LogOut" size={12} />
                       </button>

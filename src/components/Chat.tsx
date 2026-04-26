@@ -91,6 +91,7 @@ export default function Chat() {
   const [onlineCount, setOnlineCount] = useState(0);
   const [unread, setUnread] = useState(0);
   const [lastSeen, setLastSeen] = useState<string | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("chat_sound") !== "off");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const sessionId = getSessionId();
@@ -157,7 +158,7 @@ export default function Chat() {
           setLastSeen(newMsgs[newMsgs.length - 1].created_at);
           setTimeout(scrollToBottom, 50);
           if (document.hidden || !open) {
-            playNotificationSound();
+            if (soundEnabled) playNotificationSound();
             const last = newMsgs[newMsgs.length - 1];
             sendPushNotification("Общий чат", `${last.username}: ${last.text}`);
             setUnread((n) => n + newMsgs.length);
@@ -300,6 +301,17 @@ export default function Chat() {
               )}
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSoundEnabled((v) => {
+                  const next = !v;
+                  localStorage.setItem("chat_sound", next ? "on" : "off");
+                  return next;
+                })}
+                className="text-white/25 hover:text-white/60 transition-colors"
+                title={soundEnabled ? "Выключить звук" : "Включить звук"}
+              >
+                <Icon name={soundEnabled ? "Volume2" : "VolumeX"} size={14} />
+              </button>
               {user && (
                 <button
                   onClick={() => { clearUser(); setUser(null); setMessages([]); setLastSeen(null); }}
