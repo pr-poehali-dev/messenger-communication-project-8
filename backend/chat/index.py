@@ -135,7 +135,7 @@ def handler(event, context):
             if not username or not password:
                 return json_response({"error": "Введите логин и пароль"}, 400)
 
-            cur.execute(f"SELECT id, username, color, session_id, password_hash FROM chat_users WHERE username = {esc(username)} AND password_hash IS NOT NULL")
+            cur.execute(f"SELECT id, username, color, session_id, password_hash, avatar_url FROM chat_users WHERE username = {esc(username)} AND password_hash IS NOT NULL")
             row = cur.fetchone()
             if not row or not verify_password(password, row[4]):
                 return json_response({"error": "Неверный логин или пароль"}, 401)
@@ -143,7 +143,7 @@ def handler(event, context):
             new_sid = f"auth_{secrets.token_hex(24)}"
             cur.execute(f"UPDATE chat_users SET session_id = {esc(new_sid)}, last_seen = NOW() WHERE id = {esc(str(row[0]))}")
             conn.commit()
-            user = {"id": str(row[0]), "username": row[1], "color": row[2], "session_id": new_sid}
+            user = {"id": str(row[0]), "username": row[1], "color": row[2], "session_id": new_sid, "avatar_url": row[5]}
             return json_response({"user": user, "session_id": new_sid})
 
         # GET/POST ?action=join — восстановление сессии
@@ -153,13 +153,13 @@ def handler(event, context):
 
             # Если это auth_ сессия — просто найти пользователя
             if session_id.startswith("auth_"):
-                cur.execute(f"SELECT id, username, color, session_id FROM chat_users WHERE session_id = {esc(session_id)}")
+                cur.execute(f"SELECT id, username, color, session_id, avatar_url FROM chat_users WHERE session_id = {esc(session_id)}")
                 row = cur.fetchone()
                 if not row:
                     return json_response({"error": "Session not found"}, 401)
                 cur.execute(f"UPDATE chat_users SET last_seen = NOW() WHERE session_id = {esc(session_id)}")
                 conn.commit()
-                user = {"id": str(row[0]), "username": row[1], "color": row[2], "session_id": row[3]}
+                user = {"id": str(row[0]), "username": row[1], "color": row[2], "session_id": row[3], "avatar_url": row[4]}
                 return json_response({"user": user})
 
             username = (body.get("username") or random_username()).strip()[:50]
@@ -443,6 +443,47 @@ def handler(event, context):
             }
             return json_response({"message": msg}, 201)
 
+        # POST ?action=avatar_upload — загрузить аватарку в S3
+        if action == "avatar_upload" and method == "POST":
+            if not session_id:
+                return json_response({"error": "No session id"}, 400)
+            cur.execute(f"SELECT id FROM chat_users WHERE session_id = {esc(session_id)}")
+            urow = cur.fetchone()
+            if not urow:
+                return json_response({"error": "User not found"}, 401)
+            my_id = str(urow[0])
+            image_b64 = body.get("image") or ""
+            content_type = body.get("content_type") or "image/jpeg"
+            if content_type == "remove":
+                cur.execute(f"UPDATE chat_users SET avatar_url = NULL WHERE id = {esc(my_id)}")
+                conn.commit()
+                return json_response({"url": None})
+            if not image_b64:
+                return json_response({"error": "No image data"}, 400)
+            try:
+                image_data = base64.b64decode(image_b64)
+            except Exception:
+                return json_response({"error": "Invalid image data"}, 400)
+            if len(image_data) > 5 * 1024 * 1024:
+                return json_response({"error": "Image too large (max 5MB)"}, 400)
+
+            ext = "jpg"
+            if "png" in content_type: ext = "png"
+            elif "webp" in content_type: ext = "webp"
+            elif "gif" in content_type: ext = "gif"
+            file_key = f"avatars/{my_id}.{ext}"
+            s3 = boto3.client(
+                "s3",
+                endpoint_url="https://bucket.poehali.dev",
+                aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+            )
+            s3.put_object(Bucket="files", Key=file_key, Body=image_data, ContentType=content_type)
+            cdn_url = f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{file_key}"
+            cur.execute(f"UPDATE chat_users SET avatar_url = {esc(cdn_url)} WHERE id = {esc(my_id)}")
+            conn.commit()
+            return json_response({"url": cdn_url})
+
         # POST ?action=voice_upload — загрузить голосовое сообщение в S3
         if action == "voice_upload" and method == "POST":
             if not session_id:
@@ -524,12 +565,12 @@ def handler(event, context):
                 msgs.reverse()
 
             # Онлайн пользователи
-            cur.execute("""SELECT id, username, color, last_seen FROM chat_users
+            cur.execute("""SELECT id, username, color, last_seen, avatar_url FROM chat_users
                            WHERE last_seen > NOW() - INTERVAL '5 minutes'
                            ORDER BY last_seen DESC LIMIT 50""")
             users_rows = cur.fetchall()
             users = [{"id": str(r[0]), "username": r[1], "color": r[2],
-                      "last_seen": r[3].isoformat() if r[3] else None} for r in users_rows]
+                      "last_seen": r[3].isoformat() if r[3] else None, "avatar_url": r[4]} for r in users_rows]
 
             # Кто сейчас печатает (активность за последние 4 сек)
             cur.execute(f"""SELECT username, color, typing_in FROM chat_users
@@ -543,10 +584,11 @@ def handler(event, context):
 
             # Если есть сессия — добавляем личные данные
             if session_id:
-                cur.execute(f"SELECT id FROM chat_users WHERE session_id = {esc(session_id)}")
+                cur.execute(f"SELECT id, avatar_url FROM chat_users WHERE session_id = {esc(session_id)}")
                 urow = cur.fetchone()
                 if urow:
                     my_id = str(urow[0])
+                    result["my_avatar_url"] = urow[1]
                     cur.execute(f"UPDATE chat_users SET last_seen = NOW() WHERE session_id = {esc(session_id)}")
 
                     # DM unread

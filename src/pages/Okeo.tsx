@@ -29,6 +29,7 @@ interface User {
   username: string;
   color: string;
   session_id: string;
+  avatar_url?: string | null;
 }
 
 interface OnlineUser {
@@ -36,6 +37,7 @@ interface OnlineUser {
   username: string;
   color: string;
   last_seen: string;
+  avatar_url?: string | null;
 }
 
 interface Conversation {
@@ -43,9 +45,11 @@ interface Conversation {
   my_id: string;
   my_username: string;
   my_color: string;
+  my_avatar_url?: string | null;
   target_id: string;
   target_username: string;
   target_color: string;
+  target_avatar_url?: string | null;
   created_at: string;
 }
 
@@ -56,6 +60,32 @@ function getSessionId(): string {
 function formatTime(iso: string) {
   const d = new Date(iso);
   return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
+function Avatar({ url, color, username, size = 28, className = "" }: {
+  url?: string | null; color: string; username: string; size?: number; className?: string;
+}) {
+  const initials = username.slice(0, 2).toUpperCase();
+  const fontSize = Math.round(size * 0.32);
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={username}
+        className={`rounded-full object-cover flex-shrink-0 ${className}`}
+        style={{ width: size, height: size, minWidth: size }}
+        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+      />
+    );
+  }
+  return (
+    <div
+      className={`rounded-full flex-shrink-0 flex items-center justify-center font-bold text-[#0A0A0B] ${className}`}
+      style={{ width: size, height: size, minWidth: size, background: color, fontSize }}
+    >
+      {initials}
+    </div>
+  );
 }
 
 type SoundType = "pop" | "bell" | "chime" | "soft";
@@ -193,6 +223,11 @@ export default function Okeo() {
   const [soundType, setSoundType] = useState<SoundType>(() => (localStorage.getItem("chat_sound_type") as SoundType) || "pop");
   const [showSoundMenu, setShowSoundMenu] = useState(false);
 
+  // Avatar
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
   // Voice recording
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -316,6 +351,9 @@ export default function Okeo() {
         if (typeof data.online === "number") setOnlineCount(data.online);
         if (typeof data.dm_unread === "number") setDmUnread(data.dm_unread);
         if (data.typing_users) setTypingUsers(data.typing_users);
+        if (data.my_avatar_url !== undefined) {
+          setUser(prev => prev ? { ...prev, avatar_url: data.my_avatar_url } : prev);
+        }
 
         // DM сообщения
         if (data.dm_messages?.length > 0) {
@@ -415,6 +453,31 @@ export default function Okeo() {
     }
     setAuthError("Не удалось подключиться. Проверьте интернет и попробуйте снова.");
     setJoining(false);
+  };
+
+  const handleAvatarUpload = async (file: File) => {
+    if (!sessionId) return;
+    setAvatarUploading(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8 = new Uint8Array(arrayBuffer);
+      let binary = "";
+      for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
+      const b64 = btoa(binary);
+      const res = await fetch(`${API_URL}?action=avatar_upload&sid=${encodeURIComponent(sessionId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: b64, content_type: file.type }),
+      });
+      if (res.ok) {
+        const { url } = await res.json();
+        setUser(prev => prev ? { ...prev, avatar_url: url } : prev);
+        setCachedUser(user ? { ...user, avatar_url: url } : null);
+        setShowAvatarModal(false);
+      }
+    } finally {
+      setAvatarUploading(false);
+    }
   };
 
   const sendTyping = (room: string) => {
@@ -1193,12 +1256,7 @@ export default function Okeo() {
                           return (
                             <div key={msg.id} className={`flex items-end gap-2 ${isMe ? "flex-row-reverse" : ""}`}>
                               <div className={`flex-shrink-0 ${showAvatar ? "opacity-100" : "opacity-0"}`}>
-                                <div
-                                  className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold text-[#0A0A0B]"
-                                  style={{ background: msg.color }}
-                                >
-                                  {msg.username.slice(0, 2).toUpperCase()}
-                                </div>
+                                <Avatar url={onlineUsers.find(u => u.username === msg.username)?.avatar_url} color={msg.color} username={msg.username} size={24} />
                               </div>
                               <div className={`flex flex-col gap-0.5 max-w-[75%] ${isMe ? "items-end" : "items-start"}`}>
                                 {showAvatar && (
@@ -1244,12 +1302,9 @@ export default function Okeo() {
                       {/* Public input */}
                       <div className="flex-shrink-0 px-3 py-3 border-t border-white/6">
                         <div className="flex items-center gap-2 bg-white/5 border border-white/8 rounded-xl px-3 py-2 focus-within:border-purple-400/40 transition-colors">
-                          <div
-                            className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[7px] font-bold text-[#0A0A0B]"
-                            style={{ background: user.color }}
-                          >
-                            {user.username.slice(0, 2).toUpperCase()}
-                          </div>
+                          <button onClick={() => setShowAvatarModal(true)} className="flex-shrink-0 rounded-full overflow-hidden hover:opacity-80 transition-opacity" title="Сменить аватар">
+                            <Avatar url={user.avatar_url} color={user.color} username={user.username} size={20} />
+                          </button>
                           <input
                             ref={inputRef}
                             className="flex-1 bg-transparent text-white/80 text-xs placeholder:text-white/20 outline-none"
@@ -1307,12 +1362,7 @@ export default function Okeo() {
                                       disabled={openingDm}
                                       className="flex-1 flex items-center gap-2.5 px-3 py-2 rounded-xl border border-white/6 bg-white/[0.02] hover:bg-purple-500/5 hover:border-purple-400/20 transition-all"
                                     >
-                                      <div
-                                        className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-[#0A0A0B]"
-                                        style={{ background: u.color }}
-                                      >
-                                        {u.username.slice(0, 2).toUpperCase()}
-                                      </div>
+                                      <Avatar url={u.avatar_url} color={u.color} username={u.username} size={28} />
                                       <div className="flex-1 text-left min-w-0">
                                         <div className="text-white/70 text-xs truncate">{u.username}</div>
                                       </div>
@@ -1345,12 +1395,7 @@ export default function Okeo() {
                             >
                               <Icon name="ArrowLeft" size={12} color="#ffffff60" />
                             </button>
-                            <div
-                              className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-[#0A0A0B]"
-                              style={{ background: activeConv.target_color }}
-                            >
-                              {activeConv.target_username.slice(0, 2).toUpperCase()}
-                            </div>
+                            <Avatar url={onlineUsers.find(u => u.id === activeConv.target_id)?.avatar_url} color={activeConv.target_color} username={activeConv.target_username} size={28} />
                             <div className="flex-1 min-w-0">
                               <div className="text-white/80 text-xs font-medium truncate">{activeConv.target_username}</div>
                               <div className="text-white/25 text-[10px] flex items-center gap-1">
@@ -1413,12 +1458,7 @@ export default function Okeo() {
                               return (
                                 <div key={msg.id} className={`flex items-end gap-1.5 ${msg.is_mine ? "flex-row-reverse" : ""}`}>
                                   <div className={`flex-shrink-0 ${showAvatar ? "opacity-100" : "opacity-0"}`}>
-                                    <div
-                                      className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold text-[#0A0A0B]"
-                                      style={{ background: msg.sender_color }}
-                                    >
-                                      {msg.sender_username.slice(0, 2).toUpperCase()}
-                                    </div>
+                                    <Avatar url={msg.is_mine ? user.avatar_url : onlineUsers.find(u => u.id === activeConv.target_id)?.avatar_url} color={msg.sender_color} username={msg.sender_username} size={24} />
                                   </div>
                                   <div className={`flex flex-col gap-0.5 max-w-[78%] ${msg.is_mine ? "items-end" : "items-start"}`}>
                                     {showAvatar && (
@@ -1568,12 +1608,7 @@ export default function Okeo() {
                                         activeConv.target_id === u.id ? "scale-110" : "opacity-60 hover:opacity-100 hover:scale-105"
                                       }`}
                                     >
-                                      <div
-                                        className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-[#0A0A0B]"
-                                        style={{ background: u.color }}
-                                      >
-                                        {u.username.slice(0, 2).toUpperCase()}
-                                      </div>
+                                      <Avatar url={u.avatar_url} color={u.color} username={u.username} size={28} />
                                       {activeConv.target_id === u.id && (
                                         <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-purple-400" />
                                       )}
@@ -1617,6 +1652,80 @@ export default function Okeo() {
           </div>
         </div>
       </footer>
+
+      {/* Avatar upload modal */}
+      {showAvatarModal && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+          onClick={() => setShowAvatarModal(false)}
+        >
+          <div
+            className="rounded-2xl border border-white/10 p-6 flex flex-col items-center gap-4"
+            style={{ background: "rgba(18,18,22,0.98)", minWidth: 280 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-white/80 text-sm font-medium">Аватар профиля</div>
+
+            {/* Preview */}
+            <div className="relative">
+              <Avatar url={user?.avatar_url} color={user?.color || "#888"} username={user?.username || ""} size={72} />
+              <button
+                onClick={() => avatarInputRef.current?.click()}
+                className="absolute inset-0 rounded-full flex items-center justify-center bg-black/50 opacity-0 hover:opacity-100 transition-opacity"
+              >
+                <Icon name="Camera" size={20} color="white" />
+              </button>
+            </div>
+
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleAvatarUpload(file);
+              }}
+            />
+
+            <button
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={avatarUploading}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-medium transition-all disabled:opacity-50"
+              style={{ background: "linear-gradient(135deg, #7c3aed, #5b21b6)" }}
+            >
+              {avatarUploading ? (
+                <><Icon name="Loader2" size={13} color="white" className="animate-spin" /> Загружаю...</>
+              ) : (
+                <><Icon name="Upload" size={13} color="white" /> Загрузить фото</>
+              )}
+            </button>
+
+            {user?.avatar_url && (
+              <button
+                onClick={async () => {
+                  if (!sessionId) return;
+                  await fetch(`${API_URL}?action=avatar_upload&sid=${encodeURIComponent(sessionId)}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ image: "", content_type: "remove" }),
+                  }).catch(() => {});
+                  setUser(prev => prev ? { ...prev, avatar_url: null } : prev);
+                  setShowAvatarModal(false);
+                }}
+                className="text-white/30 text-xs hover:text-red-400 transition-colors"
+              >
+                Удалить аватар
+              </button>
+            )}
+
+            <button onClick={() => setShowAvatarModal(false)} className="text-white/25 text-xs hover:text-white/50 transition-colors">
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
