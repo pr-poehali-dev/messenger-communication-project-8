@@ -1357,6 +1357,37 @@ export default function Okeo() {
                                 )}
                               </button>
                             </div>
+
+                            {/* Online users switcher */}
+                            {otherOnlineUsers.length > 0 && (
+                              <div className="mt-2.5">
+                                <div className="text-white/15 text-[9px] tracking-widest uppercase mb-1.5 px-0.5">Онлайн</div>
+                                <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
+                                  {otherOnlineUsers.map((u) => (
+                                    <button
+                                      key={u.id}
+                                      onClick={() => handleOpenDm(u)}
+                                      disabled={openingDm}
+                                      title={u.username}
+                                      className={`flex-shrink-0 relative group transition-all duration-200 ${
+                                        activeConv.target_id === u.id ? "scale-110" : "opacity-60 hover:opacity-100 hover:scale-105"
+                                      }`}
+                                    >
+                                      <div
+                                        className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-[#0A0A0B]"
+                                        style={{ background: u.color }}
+                                      >
+                                        {u.username.slice(0, 2).toUpperCase()}
+                                      </div>
+                                      {activeConv.target_id === u.id && (
+                                        <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-purple-400" />
+                                      )}
+                                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-400 border border-[#0e0e10]" />
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </>
                       )}
