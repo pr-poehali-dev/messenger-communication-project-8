@@ -193,6 +193,14 @@ export default function Okeo() {
   const [soundType, setSoundType] = useState<SoundType>(() => (localStorage.getItem("chat_sound_type") as SoundType) || "pop");
   const [showSoundMenu, setShowSoundMenu] = useState(false);
 
+  // Voice recording
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [voiceUploading, setVoiceUploading] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dmMessagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -448,6 +456,67 @@ export default function Okeo() {
     typingTimerRef.current = setTimeout(() => {
       typingTimerRef.current = null;
     }, 3000);
+  };
+
+  const startRecording = async () => {
+    if (isRecording) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
+      const mr = new MediaRecorder(stream, { mimeType });
+      audioChunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        if (!activeConv || audioChunksRef.current.length === 0) return;
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (blob.size < 1000) return;
+        setVoiceUploading(true);
+        try {
+          const arrayBuffer = await blob.arrayBuffer();
+          const uint8 = new Uint8Array(arrayBuffer);
+          let binary = "";
+          for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
+          const b64 = btoa(binary);
+          const uploadRes = await fetch(`${API_URL}?action=voice_upload&sid=${encodeURIComponent(sessionId)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ audio: b64, content_type: mimeType }),
+          });
+          if (!uploadRes.ok) return;
+          const { url } = await uploadRes.json();
+          const voiceText = `🎤 Голосовое: ${url}`;
+          const sendRes = await fetch(`${API_URL}?action=dm_send&sid=${encodeURIComponent(sessionId)}`, {
+            method: "POST",
+            body: new URLSearchParams({ conv_id: activeConv.id, text: voiceText }),
+          });
+          if (sendRes.ok) {
+            const data = await sendRes.json();
+            setDmMessages(prev => [...prev, { ...data.message, is_mine: true }]);
+            setDmLastSeen(data.message.created_at);
+            setTimeout(scrollDmToBottom, 50);
+          }
+        } finally {
+          setVoiceUploading(false);
+        }
+      };
+      mr.start();
+      mediaRecorderRef.current = mr;
+      setIsRecording(true);
+      setRecordingTime(0);
+      recordingTimerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
+    } catch {
+      alert("Нет доступа к микрофону");
+    }
+  };
+
+  const stopRecording = () => {
+    if (!isRecording || !mediaRecorderRef.current) return;
+    mediaRecorderRef.current.stop();
+    mediaRecorderRef.current = null;
+    setIsRecording(false);
+    if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+    setRecordingTime(0);
   };
 
   const handleSend = async () => {
@@ -1347,7 +1416,14 @@ export default function Okeo() {
                                           : "bg-white/5 border border-white/6 text-white/70 rounded-bl-sm"
                                       }`}
                                     >
-                                      {msg.text.startsWith("📹 Видеозвонок: ") ? (() => {
+                                      {msg.text.startsWith("🎤 Голосовое: ") ? (() => {
+                                        const url = msg.text.replace("🎤 Голосовое: ", "");
+                                        return (
+                                          <div className="flex items-center gap-2 py-1" style={{ minWidth: 180 }}>
+                                            <audio controls src={url} className="h-8 w-full" style={{ filter: "invert(0.8) hue-rotate(240deg)", minWidth: 160 }} />
+                                          </div>
+                                        );
+                                      })() : msg.text.startsWith("📹 Видеозвонок: ") ? (() => {
                                         const url = msg.text.replace("📹 Видеозвонок: ", "");
                                         return (
                                           <a
@@ -1407,6 +1483,28 @@ export default function Okeo() {
                                 onKeyDown={handleDmKeyDown}
                                 disabled={dmLoading}
                               />
+                              {/* Mic button */}
+                              {!dmInput.trim() && (
+                                <button
+                                  onMouseDown={startRecording}
+                                  onMouseUp={stopRecording}
+                                  onTouchStart={startRecording}
+                                  onTouchEnd={stopRecording}
+                                  disabled={voiceUploading}
+                                  title="Удержите для записи"
+                                  className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all flex-shrink-0 ${
+                                    isRecording
+                                      ? "bg-red-500/40 animate-pulse"
+                                      : "bg-white/8 hover:bg-white/15"
+                                  } disabled:opacity-30`}
+                                >
+                                  {voiceUploading ? (
+                                    <Icon name="Loader2" size={11} color="#ffffff80" className="animate-spin" />
+                                  ) : (
+                                    <Icon name="Mic" size={11} color={isRecording ? "#f87171" : "#ffffff60"} />
+                                  )}
+                                </button>
+                              )}
                               <button
                                 onClick={handleDmSend}
                                 disabled={!dmInput.trim() || dmLoading}
@@ -1419,6 +1517,20 @@ export default function Okeo() {
                                 )}
                               </button>
                             </div>
+                            {isRecording && (
+                              <div className="flex items-center gap-1.5 mt-1.5 px-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                                <span className="text-red-400/80 text-[10px]">
+                                  Запись {Math.floor(recordingTime / 60)}:{String(recordingTime % 60).padStart(2, "0")} · Отпустите чтобы отправить
+                                </span>
+                              </div>
+                            )}
+                            {voiceUploading && (
+                              <div className="flex items-center gap-1.5 mt-1.5 px-1">
+                                <Icon name="Loader2" size={10} color="#ffffff40" className="animate-spin" />
+                                <span className="text-white/30 text-[10px]">Отправка...</span>
+                              </div>
+                            )}
 
                             {/* Online users switcher */}
                             {otherOnlineUsers.length > 0 && (

@@ -4,6 +4,8 @@ import psycopg2
 import random
 import hashlib
 import secrets
+import base64
+import boto3
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 ROOM_ID = "00000000-0000-0000-0000-000000000001"
@@ -440,6 +442,55 @@ def handler(event, context):
                 "is_mine": True
             }
             return json_response({"message": msg}, 201)
+
+        # POST ?action=voice_upload — загрузить голосовое сообщение в S3
+        if action == "voice_upload" and method == "POST":
+            if not session_id:
+                return json_response({"error": "No session id"}, 400)
+
+            cur.execute(f"SELECT id, username FROM chat_users WHERE session_id = {esc(session_id)}")
+            urow = cur.fetchone()
+            if not urow:
+                return json_response({"error": "User not found"}, 401)
+
+            audio_b64 = body.get("audio") or ""
+            content_type = body.get("content_type") or "audio/webm"
+            if not audio_b64:
+                return json_response({"error": "No audio data"}, 400)
+
+            try:
+                audio_data = base64.b64decode(audio_b64)
+            except Exception:
+                return json_response({"error": "Invalid audio data"}, 400)
+
+            if len(audio_data) > 10 * 1024 * 1024:
+                return json_response({"error": "File too large (max 10MB)"}, 400)
+
+            ext = "webm"
+            if "ogg" in content_type:
+                ext = "ogg"
+            elif "mp4" in content_type or "m4a" in content_type:
+                ext = "mp4"
+            elif "wav" in content_type:
+                ext = "wav"
+
+            file_key = f"voice/{secrets.token_hex(16)}.{ext}"
+
+            s3 = boto3.client(
+                "s3",
+                endpoint_url="https://bucket.poehali.dev",
+                aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+            )
+            s3.put_object(
+                Bucket="files",
+                Key=file_key,
+                Body=audio_data,
+                ContentType=content_type,
+            )
+
+            cdn_url = f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{file_key}"
+            return json_response({"url": cdn_url})
 
         # POST ?action=typing — отметить что пользователь печатает
         if action == "typing" and method == "POST":
