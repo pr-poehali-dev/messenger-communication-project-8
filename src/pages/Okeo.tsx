@@ -340,8 +340,8 @@ export default function Okeo() {
           const newMsgs = msgs.filter((m) => !existingIds.has(m.id));
           if (newMsgs.length === 0) return prev;
           setLastSeen(newMsgs[newMsgs.length - 1].created_at);
-          if (activeTab === "public") setTimeout(scrollToBottom, 50);
-          if (document.hidden || activeTab !== "public") {
+          setTimeout(scrollToBottom, 50);
+          if (document.hidden) {
             if (soundEnabled) playNotificationSound(soundType);
             const last = newMsgs[newMsgs.length - 1];
             sendPushNotification("Общий чат", `${last.username}: ${last.text}`);
@@ -363,7 +363,7 @@ export default function Okeo() {
       active = false;
       clearTimeout(timeoutId);
     };
-  }, [user, lastSeen, activeTab, fetchMessages, fetchOnline, fetchOnlineUsers, fetchDmUnread]);
+  }, [user, lastSeen, fetchMessages, fetchOnline, fetchOnlineUsers, fetchDmUnread, soundEnabled, soundType]);
 
   // Загрузка DM при открытии диалога
   useEffect(() => {
@@ -395,7 +395,7 @@ export default function Okeo() {
           setDmLastSeen(newMsgs[newMsgs.length - 1].created_at);
           setTimeout(scrollDmToBottom, 50);
           const incoming = newMsgs.filter((m) => !m.is_mine);
-          if (incoming.length > 0 && (document.hidden || activeTab !== "dm")) {
+          if (incoming.length > 0 && document.hidden) {
             if (soundEnabled) playNotificationSound(soundType);
             const last = incoming[incoming.length - 1];
             sendPushNotification(`Личное сообщение от ${last.sender_username}`, last.text);
@@ -841,7 +841,7 @@ export default function Okeo() {
 
       {/* MESSENGER SECTION */}
       <section id="messenger" className="relative z-10 max-w-7xl mx-auto px-8 pb-24">
-        <div className="grid lg:grid-cols-5 gap-8 items-start">
+        <div className="grid lg:grid-cols-7 gap-8 items-start">
           {/* Left: description */}
           <div className="lg:col-span-2 lg:sticky lg:top-8">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple-400/20 bg-purple-500/5 mb-6 text-xs text-purple-400/60 tracking-widest uppercase">
@@ -910,7 +910,7 @@ export default function Okeo() {
           </div>
 
           {/* Right: actual messenger */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-5">
             <div
               className="rounded-2xl border border-white/8 overflow-hidden flex flex-col"
               style={{
@@ -1053,110 +1053,91 @@ export default function Okeo() {
                 </>
               ) : (
                 <>
-                  {/* Tabs header */}
-                  <div className="flex items-center border-b border-white/6 flex-shrink-0">
-                    <button
-                      onClick={() => setActiveTab("public")}
-                      className={`flex items-center gap-2 px-5 py-4 text-sm transition-all duration-200 border-b-2 ${
-                        activeTab === "public"
-                          ? "border-purple-400 text-purple-300"
-                          : "border-transparent text-white/35 hover:text-white/60"
-                      }`}
-                    >
-                      <Icon name="Hash" size={13} color={activeTab === "public" ? "#a78bfa" : undefined} />
-                      общий
-                    </button>
-                    <button
-                      onClick={() => setActiveTab("dm")}
-                      className={`flex items-center gap-2 px-5 py-4 text-sm transition-all duration-200 border-b-2 relative ${
-                        activeTab === "dm"
-                          ? "border-purple-400 text-purple-300"
-                          : "border-transparent text-white/35 hover:text-white/60"
-                      }`}
-                    >
-                      <Icon name="Lock" size={13} color={activeTab === "dm" ? "#a78bfa" : undefined} />
-                      личные
-                      {dmUnread > 0 && (
-                        <span className="absolute top-3 right-2 w-4 h-4 rounded-full bg-purple-500 text-white text-[9px] font-bold flex items-center justify-center">
-                          {dmUnread > 9 ? "9+" : dmUnread}
-                        </span>
-                      )}
-                    </button>
-                    <div className="flex-1" />
-                    <div className="flex items-center gap-2 pr-3">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                      <span className="text-white/25 text-xs">{onlineCount} онлайн</span>
-                      <div className="relative">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setShowSoundMenu((v) => !v); }}
-                          title="Настройки звука"
-                          className="p-1.5 text-white/20 hover:text-white/60 transition-colors rounded-md"
-                        >
-                          <Icon name={soundEnabled ? "Volume2" : "VolumeX"} size={12} />
-                        </button>
-                        {showSoundMenu && (
-                          <div
-                            className="absolute right-0 top-7 z-50 rounded-lg border border-white/10 overflow-hidden"
-                            style={{ background: "rgba(18,18,22,0.98)", backdropFilter: "blur(12px)", minWidth: 160 }}
-                          >
-                            <div className="px-3 py-2 border-b border-white/8">
-                              <button
-                                onClick={() => {
-                                  const next = !soundEnabled;
-                                  setSoundEnabled(next);
-                                  localStorage.setItem("chat_sound", next ? "on" : "off");
-                                }}
-                                className="flex items-center gap-2 w-full text-left text-xs text-white/60 hover:text-white/90 transition-colors"
-                              >
-                                <Icon name={soundEnabled ? "Volume2" : "VolumeX"} size={12} />
-                                {soundEnabled ? "Выключить звук" : "Включить звук"}
-                              </button>
-                            </div>
-                            <div className="py-1">
-                              {SOUND_OPTIONS.map((opt) => (
-                                <button
-                                  key={opt.value}
-                                  onClick={() => {
-                                    setSoundType(opt.value);
-                                    localStorage.setItem("chat_sound_type", opt.value);
-                                    setSoundEnabled(true);
-                                    localStorage.setItem("chat_sound", "on");
-                                    playNotificationSound(opt.value);
-                                    setShowSoundMenu(false);
-                                  }}
-                                  className={`flex items-center justify-between w-full px-3 py-1.5 text-xs transition-colors ${
-                                    soundType === opt.value
-                                      ? "text-gold bg-gold/10"
-                                      : "text-white/50 hover:text-white/80 hover:bg-white/5"
-                                  }`}
-                                >
-                                  {opt.label}
-                                  {soundType === opt.value && <Icon name="Check" size={10} />}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        onClick={handleLogout}
-                        title="Выйти"
-                        className="p-1.5 text-white/20 hover:text-red-400/70 transition-colors rounded-md hover:bg-red-400/10"
-                      >
-                        <Icon name="LogOut" size={12} />
-                      </button>
-                    </div>
-                  </div>
+                  {/* Two-column layout: public | dm */}
+                  <div className="flex flex-1 min-h-0">
 
-                  {/* PUBLIC CHAT TAB */}
-                  {activeTab === "public" && (
-                    <>
+                    {/* ── LEFT: PUBLIC CHAT ── */}
+                    <div className="flex flex-col flex-1 min-w-0 border-r border-white/8">
+                      {/* Public header */}
+                      <div className="flex items-center justify-between px-4 py-3 border-b border-white/6 flex-shrink-0">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-md bg-purple-500/10 flex items-center justify-center">
+                            <Icon name="Hash" size={12} color="#a78bfa" />
+                          </div>
+                          <span className="text-white/70 text-sm font-medium">Общий</span>
+                          {onlineCount > 0 && (
+                            <span className="text-white/25 text-xs">{onlineCount} онлайн</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="relative">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setShowSoundMenu((v) => !v); }}
+                              title="Настройки звука"
+                              className="p-1.5 text-white/20 hover:text-white/60 transition-colors rounded-md"
+                            >
+                              <Icon name={soundEnabled ? "Volume2" : "VolumeX"} size={12} />
+                            </button>
+                            {showSoundMenu && (
+                              <div
+                                className="absolute right-0 top-7 z-50 rounded-lg border border-white/10 overflow-hidden"
+                                style={{ background: "rgba(18,18,22,0.98)", backdropFilter: "blur(12px)", minWidth: 160 }}
+                              >
+                                <div className="px-3 py-2 border-b border-white/8">
+                                  <button
+                                    onClick={() => {
+                                      const next = !soundEnabled;
+                                      setSoundEnabled(next);
+                                      localStorage.setItem("chat_sound", next ? "on" : "off");
+                                    }}
+                                    className="flex items-center gap-2 w-full text-left text-xs text-white/60 hover:text-white/90 transition-colors"
+                                  >
+                                    <Icon name={soundEnabled ? "Volume2" : "VolumeX"} size={12} />
+                                    {soundEnabled ? "Выключить звук" : "Включить звук"}
+                                  </button>
+                                </div>
+                                <div className="py-1">
+                                  {SOUND_OPTIONS.map((opt) => (
+                                    <button
+                                      key={opt.value}
+                                      onClick={() => {
+                                        setSoundType(opt.value);
+                                        localStorage.setItem("chat_sound_type", opt.value);
+                                        setSoundEnabled(true);
+                                        localStorage.setItem("chat_sound", "on");
+                                        playNotificationSound(opt.value);
+                                        setShowSoundMenu(false);
+                                      }}
+                                      className={`flex items-center justify-between w-full px-3 py-1.5 text-xs transition-colors ${
+                                        soundType === opt.value
+                                          ? "text-gold bg-gold/10"
+                                          : "text-white/50 hover:text-white/80 hover:bg-white/5"
+                                      }`}
+                                    >
+                                      {opt.label}
+                                      {soundType === opt.value && <Icon name="Check" size={10} />}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            onClick={handleLogout}
+                            title="Выйти"
+                            className="p-1.5 text-white/20 hover:text-red-400/70 transition-colors rounded-md hover:bg-red-400/10"
+                          >
+                            <Icon name="LogOut" size={12} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Public messages */}
                       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 scrollbar-thin">
                         {messages.length === 0 && (
                           <div className="flex flex-col items-center justify-center h-full text-white/20 text-sm gap-2">
-                            <Icon name="MessageSquare" size={32} color="#ffffff20" />
+                            <Icon name="MessageSquare" size={28} color="#ffffff20" />
                             <span>Пока нет сообщений</span>
-                            <span className="text-xs">Будьте первым!</span>
                           </div>
                         )}
                         {messages.map((msg, i) => {
@@ -1167,21 +1148,21 @@ export default function Okeo() {
                             <div key={msg.id} className={`flex items-end gap-2 ${isMe ? "flex-row-reverse" : ""}`}>
                               <div className={`flex-shrink-0 ${showAvatar ? "opacity-100" : "opacity-0"}`}>
                                 <div
-                                  className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-[#0A0A0B]"
+                                  className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold text-[#0A0A0B]"
                                   style={{ background: msg.color }}
                                 >
                                   {msg.username.slice(0, 2).toUpperCase()}
                                 </div>
                               </div>
-                              <div className={`flex flex-col gap-0.5 max-w-[70%] ${isMe ? "items-end" : "items-start"}`}>
+                              <div className={`flex flex-col gap-0.5 max-w-[75%] ${isMe ? "items-end" : "items-start"}`}>
                                 {showAvatar && (
                                   <div className={`flex items-center gap-2 px-1 ${isMe ? "flex-row-reverse" : ""}`}>
-                                    <span className="text-xs font-medium" style={{ color: msg.color }}>{msg.username}</span>
-                                    <span className="text-white/20 text-[10px]">{formatTime(msg.created_at)}</span>
+                                    <span className="text-[10px] font-medium" style={{ color: msg.color }}>{msg.username}</span>
+                                    <span className="text-white/20 text-[9px]">{formatTime(msg.created_at)}</span>
                                   </div>
                                 )}
                                 <div
-                                  className={`px-3 py-2 rounded-xl text-sm leading-relaxed break-words ${
+                                  className={`px-3 py-2 rounded-xl text-xs leading-relaxed break-words ${
                                     isMe
                                       ? "bg-purple-500/20 border border-purple-400/30 text-white/85 rounded-br-sm"
                                       : "bg-white/5 border border-white/6 text-white/70 rounded-bl-sm"
@@ -1197,18 +1178,18 @@ export default function Okeo() {
                       </div>
 
                       {/* Public input */}
-                      <div className="flex-shrink-0 px-4 py-4 border-t border-white/6">
-                        <div className="flex items-center gap-2 bg-white/5 border border-white/8 rounded-xl px-4 py-2.5 focus-within:border-purple-400/40 transition-colors duration-200">
+                      <div className="flex-shrink-0 px-3 py-3 border-t border-white/6">
+                        <div className="flex items-center gap-2 bg-white/5 border border-white/8 rounded-xl px-3 py-2 focus-within:border-purple-400/40 transition-colors">
                           <div
-                            className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[8px] font-bold text-[#0A0A0B]"
+                            className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[7px] font-bold text-[#0A0A0B]"
                             style={{ background: user.color }}
                           >
                             {user.username.slice(0, 2).toUpperCase()}
                           </div>
                           <input
                             ref={inputRef}
-                            className="flex-1 bg-transparent text-white/80 text-sm placeholder:text-white/20 outline-none"
-                            placeholder="Напишите сообщение..."
+                            className="flex-1 bg-transparent text-white/80 text-xs placeholder:text-white/20 outline-none"
+                            placeholder="Сообщение..."
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
@@ -1217,133 +1198,127 @@ export default function Okeo() {
                           <button
                             onClick={handleSend}
                             disabled={!input.trim() || loading}
-                            className="w-7 h-7 rounded-lg bg-purple-500/25 hover:bg-purple-500/40 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 flex-shrink-0"
+                            className="w-6 h-6 rounded-lg bg-purple-500/25 hover:bg-purple-500/40 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all flex-shrink-0"
                           >
                             {loading ? (
-                              <Icon name="Loader2" size={13} color="#a78bfa" className="animate-spin" />
+                              <Icon name="Loader2" size={11} color="#a78bfa" className="animate-spin" />
                             ) : (
-                              <Icon name="Send" size={13} color="#a78bfa" />
+                              <Icon name="Send" size={11} color="#a78bfa" />
                             )}
                           </button>
                         </div>
-                        <div className="mt-2 text-center text-white/15 text-[10px] tracking-wide">
-                          {user.username} · Enter для отправки
-                        </div>
                       </div>
-                    </>
-                  )}
+                    </div>
 
-                  {/* DIRECT MESSAGES TAB */}
-                  {activeTab === "dm" && (
-                    <>
+                    {/* ── RIGHT: DM CHAT ── */}
+                    <div className="flex flex-col w-[45%] flex-shrink-0 min-w-0">
                       {!activeConv ? (
-                        /* No conversation selected */
-                        <div className="flex flex-col items-center justify-center flex-1 px-8 gap-4 text-center">
-                          <div className="w-16 h-16 rounded-2xl bg-purple-500/10 border border-purple-400/20 flex items-center justify-center">
-                            <Icon name="Lock" size={28} color="#a78bfa" />
-                          </div>
-                          <div>
-                            <div className="text-white/70 font-medium text-base mb-1">Личные сообщения</div>
-                            <div className="text-white/30 text-sm max-w-xs">
-                              Выберите пользователя из списка онлайн слева, чтобы начать личный разговор
-                            </div>
-                          </div>
-                          {otherOnlineUsers.length === 0 && (
-                            <div className="text-white/20 text-xs mt-2">
-                              Сейчас никого нет онлайн
-                            </div>
-                          )}
-                          {otherOnlineUsers.length > 0 && (
-                            <div className="w-full max-w-xs space-y-2 mt-2">
-                              <div className="text-white/25 text-xs tracking-widest uppercase mb-3">Онлайн</div>
-                              {otherOnlineUsers.slice(0, 5).map((u) => (
-                                <button
-                                  key={u.id}
-                                  onClick={() => handleOpenDm(u)}
-                                  disabled={openingDm}
-                                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/6 bg-white/[0.02] hover:bg-purple-500/5 hover:border-purple-400/20 transition-all duration-200 group"
-                                >
-                                  <div
-                                    className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-bold text-[#0A0A0B]"
-                                    style={{ background: u.color }}
-                                  >
-                                    {u.username.slice(0, 2).toUpperCase()}
-                                  </div>
-                                  <div className="flex-1 text-left">
-                                    <div className="text-white/70 text-sm group-hover:text-white/90 transition-colors">{u.username}</div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                                    <Icon name="ChevronRight" size={13} color="#a78bfa" className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        /* Active conversation */
                         <>
                           {/* DM header */}
-                          <div className="flex items-center gap-3 px-4 py-3 border-b border-white/6 flex-shrink-0">
+                          <div className="flex items-center gap-2 px-4 py-3 border-b border-white/6 flex-shrink-0">
+                            <div className="w-6 h-6 rounded-md bg-purple-500/10 flex items-center justify-center">
+                              <Icon name="Lock" size={12} color="#a78bfa" />
+                            </div>
+                            <span className="text-white/70 text-sm font-medium">Личные</span>
+                            {dmUnread > 0 && (
+                              <span className="w-4 h-4 rounded-full bg-purple-500 text-white text-[9px] font-bold flex items-center justify-center">
+                                {dmUnread > 9 ? "9+" : dmUnread}
+                              </span>
+                            )}
+                          </div>
+                          {/* User list */}
+                          <div className="flex-1 overflow-y-auto px-3 py-3">
+                            {otherOnlineUsers.length === 0 ? (
+                              <div className="flex flex-col items-center justify-center h-full text-white/20 text-xs gap-2 text-center">
+                                <Icon name="Users" size={24} color="#ffffff20" />
+                                <span>Никого нет онлайн</span>
+                              </div>
+                            ) : (
+                              <div className="space-y-1.5">
+                                <div className="text-white/20 text-[10px] tracking-widest uppercase px-1 mb-2">Онлайн</div>
+                                {otherOnlineUsers.map((u) => (
+                                  <button
+                                    key={u.id}
+                                    onClick={() => handleOpenDm(u)}
+                                    disabled={openingDm}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border border-white/6 bg-white/[0.02] hover:bg-purple-500/5 hover:border-purple-400/20 transition-all group"
+                                  >
+                                    <div
+                                      className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-[#0A0A0B]"
+                                      style={{ background: u.color }}
+                                    >
+                                      {u.username.slice(0, 2).toUpperCase()}
+                                    </div>
+                                    <div className="flex-1 text-left min-w-0">
+                                      <div className="text-white/70 text-xs truncate group-hover:text-white/90 transition-colors">{u.username}</div>
+                                    </div>
+                                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        /* Active DM conversation */
+                        <>
+                          {/* DM active header */}
+                          <div className="flex items-center gap-2 px-3 py-3 border-b border-white/6 flex-shrink-0">
                             <button
                               onClick={() => { setActiveConv(null); setDmMessages([]); setDmLastSeen(null); }}
-                              className="w-7 h-7 rounded-lg hover:bg-white/8 flex items-center justify-center transition-colors"
+                              className="w-6 h-6 rounded-lg hover:bg-white/8 flex items-center justify-center transition-colors flex-shrink-0"
                             >
-                              <Icon name="ArrowLeft" size={14} color="#ffffff60" />
+                              <Icon name="ArrowLeft" size={12} color="#ffffff60" />
                             </button>
                             <div
-                              className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-bold text-[#0A0A0B]"
+                              className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-[#0A0A0B]"
                               style={{ background: activeConv.target_color }}
                             >
                               {activeConv.target_username.slice(0, 2).toUpperCase()}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="text-white/80 text-sm font-medium truncate">{activeConv.target_username}</div>
-                              <div className="text-white/25 text-xs flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                              <div className="text-white/80 text-xs font-medium truncate">{activeConv.target_username}</div>
+                              <div className="text-white/25 text-[10px] flex items-center gap-1">
+                                <span className="w-1 h-1 rounded-full bg-green-400" />
                                 онлайн
                               </div>
                             </div>
-                            <div className="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-400/20 flex items-center justify-center">
-                              <Icon name="Lock" size={12} color="#a78bfa" />
-                            </div>
+                            <Icon name="Lock" size={11} color="#a78bfa60" />
                           </div>
 
                           {/* DM messages */}
-                          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 scrollbar-thin">
+                          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5 scrollbar-thin">
                             {dmMessages.length === 0 && (
-                              <div className="flex flex-col items-center justify-center h-full text-white/20 text-sm gap-2">
-                                <Icon name="MessageSquare" size={32} color="#ffffff20" />
+                              <div className="flex flex-col items-center justify-center h-full text-white/20 text-xs gap-2 text-center">
+                                <Icon name="MessageSquare" size={24} color="#ffffff20" />
                                 <span>Начните разговор</span>
-                                <span className="text-xs">Ваши сообщения видны только вам двоим</span>
                               </div>
                             )}
                             {dmMessages.map((msg, i) => {
                               const prevMsg = dmMessages[i - 1];
                               const showAvatar = !prevMsg || prevMsg.sender_id !== msg.sender_id;
                               return (
-                                <div key={msg.id} className={`flex items-end gap-2 ${msg.is_mine ? "flex-row-reverse" : ""}`}>
+                                <div key={msg.id} className={`flex items-end gap-1.5 ${msg.is_mine ? "flex-row-reverse" : ""}`}>
                                   <div className={`flex-shrink-0 ${showAvatar ? "opacity-100" : "opacity-0"}`}>
                                     <div
-                                      className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-[#0A0A0B]"
+                                      className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold text-[#0A0A0B]"
                                       style={{ background: msg.sender_color }}
                                     >
                                       {msg.sender_username.slice(0, 2).toUpperCase()}
                                     </div>
                                   </div>
-                                  <div className={`flex flex-col gap-0.5 max-w-[70%] ${msg.is_mine ? "items-end" : "items-start"}`}>
+                                  <div className={`flex flex-col gap-0.5 max-w-[78%] ${msg.is_mine ? "items-end" : "items-start"}`}>
                                     {showAvatar && (
-                                      <div className={`flex items-center gap-2 px-1 ${msg.is_mine ? "flex-row-reverse" : ""}`}>
-                                        <span className="text-xs font-medium" style={{ color: msg.sender_color }}>{msg.sender_username}</span>
-                                        <span className="text-white/20 text-[10px]">{formatTime(msg.created_at)}</span>
+                                      <div className={`flex items-center gap-1.5 px-1 ${msg.is_mine ? "flex-row-reverse" : ""}`}>
+                                        <span className="text-[10px] font-medium" style={{ color: msg.sender_color }}>{msg.sender_username}</span>
+                                        <span className="text-white/20 text-[9px]">{formatTime(msg.created_at)}</span>
                                         {msg.is_mine && msg.read_at && (
-                                          <Icon name="CheckCheck" size={10} color="#a78bfa" />
+                                          <Icon name="CheckCheck" size={9} color="#a78bfa" />
                                         )}
                                       </div>
                                     )}
                                     <div
-                                      className={`px-3 py-2 rounded-xl text-sm leading-relaxed break-words ${
+                                      className={`px-3 py-2 rounded-xl text-xs leading-relaxed break-words ${
                                         msg.is_mine
                                           ? "bg-purple-500/20 border border-purple-400/30 text-white/85 rounded-br-sm"
                                           : "bg-white/5 border border-white/6 text-white/70 rounded-bl-sm"
@@ -1359,18 +1334,12 @@ export default function Okeo() {
                           </div>
 
                           {/* DM input */}
-                          <div className="flex-shrink-0 px-4 py-4 border-t border-white/6">
-                            <div className="flex items-center gap-2 bg-white/5 border border-white/8 rounded-xl px-4 py-2.5 focus-within:border-purple-400/40 transition-colors duration-200">
-                              <div
-                                className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[8px] font-bold text-[#0A0A0B]"
-                                style={{ background: user.color }}
-                              >
-                                {user.username.slice(0, 2).toUpperCase()}
-                              </div>
+                          <div className="flex-shrink-0 px-3 py-3 border-t border-white/6">
+                            <div className="flex items-center gap-2 bg-white/5 border border-white/8 rounded-xl px-3 py-2 focus-within:border-purple-400/40 transition-colors">
                               <input
                                 ref={dmInputRef}
-                                className="flex-1 bg-transparent text-white/80 text-sm placeholder:text-white/20 outline-none"
-                                placeholder={`Написать ${activeConv.target_username}...`}
+                                className="flex-1 bg-transparent text-white/80 text-xs placeholder:text-white/20 outline-none"
+                                placeholder={`${activeConv.target_username}...`}
                                 value={dmInput}
                                 onChange={(e) => setDmInput(e.target.value)}
                                 onKeyDown={handleDmKeyDown}
@@ -1379,24 +1348,23 @@ export default function Okeo() {
                               <button
                                 onClick={handleDmSend}
                                 disabled={!dmInput.trim() || dmLoading}
-                                className="w-7 h-7 rounded-lg bg-purple-500/25 hover:bg-purple-500/40 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 flex-shrink-0"
+                                className="w-6 h-6 rounded-lg bg-purple-500/25 hover:bg-purple-500/40 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all flex-shrink-0"
                               >
                                 {dmLoading ? (
-                                  <Icon name="Loader2" size={13} color="#a78bfa" className="animate-spin" />
+                                  <Icon name="Loader2" size={11} color="#a78bfa" className="animate-spin" />
                                 ) : (
-                                  <Icon name="Send" size={13} color="#a78bfa" />
+                                  <Icon name="Send" size={11} color="#a78bfa" />
                                 )}
                               </button>
-                            </div>
-                            <div className="mt-2 text-center text-white/15 text-[10px] tracking-wide flex items-center justify-center gap-1.5">
-                              <Icon name="Lock" size={9} color="#ffffff20" />
-                              Только вы и {activeConv.target_username} видите эти сообщения
                             </div>
                           </div>
                         </>
                       )}
-                    </>
-                  )}
+                    </div>
+                    {/* end DM column */}
+
+                  </div>
+                  {/* end two-column flex */}
                 </>
               )}
             </div>
