@@ -31,6 +31,14 @@
       "method": "GET",
       "path": "/?action=online",
       "expectedStatus": 200
+    },
+    {
+      "name": "Poll endpoint (no session)",
+      "method": "GET",
+      "path": "/?action=poll",
+      "expectedStatus": 200,
+      "expectedBody": { "dm_unread": 0 },
+      "bodyMatcher": "partial"
     }
   ]
 }

@@ -441,6 +441,87 @@ def handler(event, context):
             }
             return json_response({"message": msg}, 201)
 
+        # GET ?action=poll — единый запрос: сообщения + пользователи + онлайн + dm_unread + dm_messages
+        if action == "poll" and method == "GET":
+            since = query_params.get("since")
+            conv_id = query_params.get("conv_id")
+            dm_since = query_params.get("dm_since")
+
+            # Публичные сообщения
+            if since:
+                cur.execute(f"""SELECT id, username, color, text, created_at FROM chat_messages
+                               WHERE room_id = {esc(ROOM_ID)} AND created_at > {esc(since)}
+                               ORDER BY created_at ASC LIMIT 50""")
+            else:
+                cur.execute(f"""SELECT id, username, color, text, created_at FROM chat_messages
+                               WHERE room_id = {esc(ROOM_ID)}
+                               ORDER BY created_at DESC LIMIT 50""")
+            rows = cur.fetchall()
+            msgs = [{"id": str(r[0]), "username": r[1], "color": r[2], "text": r[3],
+                     "created_at": r[4].isoformat() if r[4] else None} for r in rows]
+            if not since:
+                msgs.reverse()
+
+            # Онлайн пользователи
+            cur.execute("""SELECT id, username, color, last_seen FROM chat_users
+                           WHERE last_seen > NOW() - INTERVAL '5 minutes'
+                           ORDER BY last_seen DESC LIMIT 50""")
+            users_rows = cur.fetchall()
+            users = [{"id": str(r[0]), "username": r[1], "color": r[2],
+                      "last_seen": r[3].isoformat() if r[3] else None} for r in users_rows]
+
+            result = {"messages": msgs, "users": users, "online": len(users_rows),
+                      "dm_unread": 0, "dm_messages": []}
+
+            # Если есть сессия — добавляем личные данные
+            if session_id:
+                cur.execute(f"SELECT id FROM chat_users WHERE session_id = {esc(session_id)}")
+                urow = cur.fetchone()
+                if urow:
+                    my_id = str(urow[0])
+                    cur.execute(f"UPDATE chat_users SET last_seen = NOW() WHERE session_id = {esc(session_id)}")
+
+                    # DM unread
+                    cur.execute(f"""SELECT COUNT(*) FROM direct_messages dm
+                                    JOIN direct_conversations dc ON dc.id = dm.conversation_id
+                                    WHERE (dc.user1_id = {esc(my_id)} OR dc.user2_id = {esc(my_id)})
+                                    AND dm.sender_id != {esc(my_id)} AND dm.read_at IS NULL""")
+                    result["dm_unread"] = cur.fetchone()[0]
+
+                    # DM messages если открыт диалог
+                    if conv_id:
+                        cur.execute(f"""SELECT id FROM direct_conversations
+                                        WHERE id = {esc(conv_id)}
+                                        AND (user1_id = {esc(my_id)} OR user2_id = {esc(my_id)})""")
+                        if cur.fetchone():
+                            if dm_since:
+                                cur.execute(f"""SELECT id, sender_id, sender_username, sender_color, text, created_at, read_at
+                                                FROM direct_messages
+                                                WHERE conversation_id = {esc(conv_id)} AND created_at > {esc(dm_since)}
+                                                ORDER BY created_at ASC LIMIT 50""")
+                            else:
+                                cur.execute(f"""SELECT id, sender_id, sender_username, sender_color, text, created_at, read_at
+                                                FROM direct_messages WHERE conversation_id = {esc(conv_id)}
+                                                ORDER BY created_at DESC LIMIT 50""")
+                            dm_rows = cur.fetchall()
+                            dm_msgs = [{"id": str(r[0]), "sender_id": str(r[1]), "sender_username": r[2],
+                                        "sender_color": r[3], "text": r[4],
+                                        "created_at": r[5].isoformat() if r[5] else None,
+                                        "read_at": r[6].isoformat() if r[6] else None,
+                                        "is_mine": str(r[1]) == my_id} for r in dm_rows]
+                            if not dm_since:
+                                dm_msgs.reverse()
+                            result["dm_messages"] = dm_msgs
+
+                            # Отмечаем прочитанными
+                            cur.execute(f"""UPDATE direct_messages SET read_at = NOW()
+                                            WHERE conversation_id = {esc(conv_id)}
+                                            AND sender_id != {esc(my_id)} AND read_at IS NULL""")
+
+                    conn.commit()
+
+            return json_response(result)
+
         # GET ?action=dm_unread — количество непрочитанных личных сообщений
         if action == "dm_unread" and method == "GET":
             if not session_id:

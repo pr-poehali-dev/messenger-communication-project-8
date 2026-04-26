@@ -177,7 +177,6 @@ export default function Okeo() {
   const [lastSeen, setLastSeen] = useState<string | null>(null);
 
   // Личные чаты
-  const [activeTab, setActiveTab] = useState<"public" | "dm">("public");
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
   const [dmMessages, setDmMessages] = useState<DmMessage[]>([]);
@@ -262,39 +261,7 @@ export default function Okeo() {
     }
   }, []);
 
-  const fetchOnline = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_URL}?action=online`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setOnlineCount(data.count);
-    } catch {
-      // ignore
-    }
-  }, []);
 
-  const fetchOnlineUsers = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_URL}?action=users`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setOnlineUsers(data.users || []);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const fetchDmUnread = useCallback(async () => {
-    if (!sessionId) return;
-    try {
-      const res = await fetch(`${API_URL}?action=dm_unread&sid=${encodeURIComponent(sessionId)}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setDmUnread(data.count || 0);
-    } catch {
-      // ignore
-    }
-  }, [sessionId]);
 
   const fetchDmMessages = useCallback(async (convId: string, since?: string) => {
     try {
@@ -310,7 +277,7 @@ export default function Okeo() {
     }
   }, [sessionId]);
 
-  // Загрузка публичных сообщений
+  // Начальная загрузка публичных сообщений
   useEffect(() => {
     if (!user) return;
     fetchMessages().then((msgs) => {
@@ -320,50 +287,83 @@ export default function Okeo() {
         setTimeout(scrollToBottom, 50);
       }
     });
-    fetchOnline();
-    fetchOnlineUsers();
-    fetchDmUnread();
-  }, [user, fetchMessages, fetchOnline, fetchOnlineUsers, fetchDmUnread]);
+  }, [user, fetchMessages]);
 
-  // Поллинг публичных сообщений
+  // Единый поллинг — один запрос вместо 4-5
   useEffect(() => {
     if (!user) return;
     let active = true;
     let timeoutId: ReturnType<typeof setTimeout>;
 
-    const poll = async () => {
+    const doPoll = async () => {
       if (!active) return;
-      const msgs = await fetchMessages(lastSeen || undefined);
-      if (msgs && msgs.length > 0) {
-        setMessages((prev) => {
-          const existingIds = new Set(prev.map((m) => m.id));
-          const newMsgs = msgs.filter((m) => !existingIds.has(m.id));
-          if (newMsgs.length === 0) return prev;
-          setLastSeen(newMsgs[newMsgs.length - 1].created_at);
-          setTimeout(scrollToBottom, 50);
-          if (document.hidden) {
-            if (soundEnabled) playNotificationSound(soundType);
-            const last = newMsgs[newMsgs.length - 1];
-            sendPushNotification("Общий чат", `${last.username}: ${last.text}`);
-          }
-          return [...prev, ...newMsgs];
-        });
-      }
-      fetchOnline();
-      fetchOnlineUsers();
-      fetchDmUnread();
+      try {
+        const params = new URLSearchParams();
+        params.set("action", "poll");
+        if (lastSeen) params.set("since", lastSeen);
+        if (activeConv) {
+          params.set("conv_id", activeConv.id);
+          if (dmLastSeen) params.set("dm_since", dmLastSeen);
+        }
+        if (sessionId) params.set("sid", sessionId);
+
+        const res = await fetch(`${API_URL}?${params.toString()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Публичные сообщения
+        if (data.messages?.length > 0) {
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((m: Message) => m.id));
+            const newMsgs = data.messages.filter((m: Message) => !existingIds.has(m.id));
+            if (newMsgs.length === 0) return prev;
+            setLastSeen(newMsgs[newMsgs.length - 1].created_at);
+            setTimeout(scrollToBottom, 50);
+            if (document.hidden) {
+              if (soundEnabled) playNotificationSound(soundType);
+              const last = newMsgs[newMsgs.length - 1];
+              sendPushNotification("Общий чат", `${last.username}: ${last.text}`);
+            }
+            return [...prev, ...newMsgs];
+          });
+        }
+
+        // Онлайн
+        if (data.users) setOnlineUsers(data.users);
+        if (typeof data.online === "number") setOnlineCount(data.online);
+        if (typeof data.dm_unread === "number") setDmUnread(data.dm_unread);
+
+        // DM сообщения
+        if (data.dm_messages?.length > 0) {
+          setDmMessages((prev) => {
+            const existingIds = new Set(prev.map((m: DmMessage) => m.id));
+            const newMsgs = data.dm_messages.filter((m: DmMessage) => !existingIds.has(m.id));
+            if (newMsgs.length === 0) return prev;
+            setDmLastSeen(newMsgs[newMsgs.length - 1].created_at);
+            setTimeout(scrollDmToBottom, 50);
+            const incoming = newMsgs.filter((m: DmMessage) => !m.is_mine);
+            if (incoming.length > 0 && document.hidden) {
+              if (soundEnabled) playNotificationSound(soundType);
+              const last = incoming[incoming.length - 1];
+              sendPushNotification(`Личное сообщение от ${last.sender_username}`, last.text);
+            }
+            return [...prev, ...newMsgs];
+          });
+        }
+      } catch { /* ignore */ }
+
       if (active) {
         const interval = document.hidden ? POLL_INTERVAL_BG : POLL_INTERVAL;
-        timeoutId = setTimeout(poll, interval);
+        timeoutId = setTimeout(doPoll, interval);
       }
     };
 
-    timeoutId = setTimeout(poll, POLL_INTERVAL);
+    timeoutId = setTimeout(doPoll, POLL_INTERVAL);
     return () => {
       active = false;
       clearTimeout(timeoutId);
     };
-  }, [user, lastSeen, fetchMessages, fetchOnline, fetchOnlineUsers, fetchDmUnread, soundEnabled, soundType]);
+  }, [user, lastSeen, activeConv, dmLastSeen, sessionId, soundEnabled, soundType]);
 
   // Загрузка DM при открытии диалога
   useEffect(() => {
@@ -377,45 +377,6 @@ export default function Okeo() {
     });
     setTimeout(() => dmInputRef.current?.focus(), 100);
   }, [activeConv, fetchDmMessages]);
-
-  // Поллинг DM
-  useEffect(() => {
-    if (!activeConv) return;
-    let active = true;
-    let timeoutId: ReturnType<typeof setTimeout>;
-
-    const poll = async () => {
-      if (!active) return;
-      const msgs = await fetchDmMessages(activeConv.id, dmLastSeen || undefined);
-      if (msgs && msgs.length > 0) {
-        setDmMessages((prev) => {
-          const existingIds = new Set(prev.map((m) => m.id));
-          const newMsgs = msgs.filter((m) => !existingIds.has(m.id));
-          if (newMsgs.length === 0) return prev;
-          setDmLastSeen(newMsgs[newMsgs.length - 1].created_at);
-          setTimeout(scrollDmToBottom, 50);
-          const incoming = newMsgs.filter((m) => !m.is_mine);
-          if (incoming.length > 0 && document.hidden) {
-            if (soundEnabled) playNotificationSound(soundType);
-            const last = incoming[incoming.length - 1];
-            sendPushNotification(`Личное сообщение от ${last.sender_username}`, last.text);
-          }
-          return [...prev, ...newMsgs];
-        });
-        setDmUnread(0);
-      }
-      if (active) {
-        const interval = document.hidden ? POLL_INTERVAL_BG : POLL_INTERVAL;
-        timeoutId = setTimeout(poll, interval);
-      }
-    };
-
-    timeoutId = setTimeout(poll, POLL_INTERVAL);
-    return () => {
-      active = false;
-      clearTimeout(timeoutId);
-    };
-  }, [activeConv, dmLastSeen, fetchDmMessages]);
 
   useEffect(() => {
     if (user) setTimeout(() => inputRef.current?.focus(), 100);
@@ -527,7 +488,6 @@ export default function Okeo() {
       setActiveConv(data.conversation);
       setDmMessages([]);
       setDmLastSeen(null);
-      setActiveTab("dm");
     } catch {
       // ignore
     } finally {
