@@ -1278,6 +1278,34 @@ export default function Okeo() {
                                 онлайн
                               </div>
                             </div>
+                            <button
+                              onClick={() => {
+                                const roomId = `orbit-${activeConv.id.replace(/-/g, "").slice(0, 16)}`;
+                                const callUrl = `https://meet.jit.si/${roomId}`;
+                                const callText = `📹 Видеозвонок: ${callUrl}`;
+                                setDmInput(callText);
+                                setTimeout(() => {
+                                  const fakeEvent = { target: { value: callText } } as React.ChangeEvent<HTMLInputElement>;
+                                  void fakeEvent;
+                                  fetch(`${API_URL}?action=dm_send&sid=${encodeURIComponent(sessionId)}`, {
+                                    method: "POST",
+                                    body: new URLSearchParams({ conv_id: activeConv.id, text: callText }),
+                                  }).then(r => r.json()).then(data => {
+                                    if (data.message) {
+                                      setDmMessages(prev => [...prev, { ...data.message, is_mine: true }]);
+                                      setDmLastSeen(data.message.created_at);
+                                    }
+                                    setDmInput("");
+                                    setTimeout(scrollDmToBottom, 50);
+                                    window.open(callUrl, "_blank");
+                                  }).catch(() => {});
+                                }, 0);
+                              }}
+                              title="Начать видеозвонок"
+                              className="w-6 h-6 rounded-lg bg-green-500/15 hover:bg-green-500/30 flex items-center justify-center transition-colors flex-shrink-0"
+                            >
+                              <Icon name="Video" size={12} color="#4ade80" />
+                            </button>
                             <Icon name="Lock" size={11} color="#a78bfa60" />
                           </div>
 
@@ -1319,7 +1347,27 @@ export default function Okeo() {
                                           : "bg-white/5 border border-white/6 text-white/70 rounded-bl-sm"
                                       }`}
                                     >
-                                      {msg.text}
+                                      {msg.text.startsWith("📹 Видеозвонок: ") ? (() => {
+                                        const url = msg.text.replace("📹 Видеозвонок: ", "");
+                                        return (
+                                          <a
+                                            href={url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-green-500/30 bg-green-500/10 hover:bg-green-500/20 transition-colors no-underline"
+                                            style={{ minWidth: 160 }}
+                                          >
+                                            <div className="w-7 h-7 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                                              <Icon name="Video" size={13} color="#4ade80" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                              <div className="text-green-300 text-[11px] font-medium">Видеозвонок</div>
+                                              <div className="text-white/40 text-[9px]">Нажмите чтобы присоединиться</div>
+                                            </div>
+                                            <Icon name="ExternalLink" size={10} color="#4ade8060" />
+                                          </a>
+                                        );
+                                      })() : msg.text}
                                     </div>
                                   </div>
                                 </div>
