@@ -601,6 +601,22 @@ export default function Okeo() {
     ? onlineUsers.filter((u) => u.id !== user.id)
     : onlineUsers;
 
+  // Автооткрытие DM по ?dm=username
+  useEffect(() => {
+    if (!user || !onlineUsers.length || activeConv) return;
+    const params = new URLSearchParams(window.location.search);
+    const targetUsername = params.get("dm");
+    if (!targetUsername) return;
+    const target = onlineUsers.find(
+      (u) => u.username.toLowerCase() === targetUsername.toLowerCase() && u.id !== user.id
+    );
+    if (!target) return;
+    // Убираем параметр из URL без перезагрузки
+    const newUrl = window.location.pathname;
+    window.history.replaceState({}, "", newUrl);
+    handleOpenDm(target);
+  }, [user, onlineUsers, activeConv]);
+
   return (
     <div className="min-h-screen bg-[#0A0A0B] text-white font-ibm overflow-x-hidden">
       {/* Ambient glows */}
@@ -635,6 +651,19 @@ export default function Okeo() {
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
               {onlineCount} онлайн
             </div>
+          )}
+          {user && (
+            <button
+              onClick={() => {
+                const link = `${window.location.origin}/?dm=${encodeURIComponent(user.username)}`;
+                navigator.clipboard.writeText(link).catch(() => {});
+              }}
+              title="Скопировать свою ссылку"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-2 border border-white/10 text-white/40 text-xs hover:text-white/70 hover:border-white/20 transition-all rounded-sm"
+            >
+              <Icon name="Link" size={12} />
+              Моя ссылка
+            </button>
           )}
           <a
             href="#messenger"
@@ -1272,23 +1301,34 @@ export default function Okeo() {
                               <div className="space-y-1.5">
                                 <div className="text-white/20 text-[10px] tracking-widest uppercase px-1 mb-2">Онлайн</div>
                                 {otherOnlineUsers.map((u) => (
-                                  <button
-                                    key={u.id}
-                                    onClick={() => handleOpenDm(u)}
-                                    disabled={openingDm}
-                                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border border-white/6 bg-white/[0.02] hover:bg-purple-500/5 hover:border-purple-400/20 transition-all group"
-                                  >
-                                    <div
-                                      className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-[#0A0A0B]"
-                                      style={{ background: u.color }}
+                                  <div key={u.id} className="flex items-center gap-1.5 group">
+                                    <button
+                                      onClick={() => handleOpenDm(u)}
+                                      disabled={openingDm}
+                                      className="flex-1 flex items-center gap-2.5 px-3 py-2 rounded-xl border border-white/6 bg-white/[0.02] hover:bg-purple-500/5 hover:border-purple-400/20 transition-all"
                                     >
-                                      {u.username.slice(0, 2).toUpperCase()}
-                                    </div>
-                                    <div className="flex-1 text-left min-w-0">
-                                      <div className="text-white/70 text-xs truncate group-hover:text-white/90 transition-colors">{u.username}</div>
-                                    </div>
-                                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
-                                  </button>
+                                      <div
+                                        className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-[#0A0A0B]"
+                                        style={{ background: u.color }}
+                                      >
+                                        {u.username.slice(0, 2).toUpperCase()}
+                                      </div>
+                                      <div className="flex-1 text-left min-w-0">
+                                        <div className="text-white/70 text-xs truncate">{u.username}</div>
+                                      </div>
+                                      <span className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        const link = `${window.location.origin}/?dm=${encodeURIComponent(u.username)}`;
+                                        navigator.clipboard.writeText(link).catch(() => {});
+                                      }}
+                                      title="Скопировать ссылку"
+                                      className="w-6 h-6 rounded-lg bg-white/0 hover:bg-white/8 flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+                                    >
+                                      <Icon name="Link" size={11} color="#ffffff50" />
+                                    </button>
+                                  </div>
                                 ))}
                               </div>
                             )}
@@ -1345,6 +1385,16 @@ export default function Okeo() {
                               className="w-6 h-6 rounded-lg bg-green-500/15 hover:bg-green-500/30 flex items-center justify-center transition-colors flex-shrink-0"
                             >
                               <Icon name="Video" size={12} color="#4ade80" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                const link = `${window.location.origin}/?dm=${encodeURIComponent(activeConv.target_username)}`;
+                                navigator.clipboard.writeText(link).catch(() => {});
+                              }}
+                              title="Скопировать ссылку на чат"
+                              className="w-6 h-6 rounded-lg bg-white/5 hover:bg-white/15 flex items-center justify-center transition-colors flex-shrink-0"
+                            >
+                              <Icon name="Link" size={11} color="#ffffff60" />
                             </button>
                             <Icon name="Lock" size={11} color="#a78bfa60" />
                           </div>
