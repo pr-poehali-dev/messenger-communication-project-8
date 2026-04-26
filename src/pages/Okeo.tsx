@@ -176,6 +176,10 @@ export default function Okeo() {
   const [onlineCount, setOnlineCount] = useState(0);
   const [lastSeen, setLastSeen] = useState<string | null>(null);
 
+  // Typing
+  const [typingUsers, setTypingUsers] = useState<{username: string; color: string; room: string}[]>([]);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Личные чаты
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
@@ -332,6 +336,7 @@ export default function Okeo() {
         if (data.users) setOnlineUsers(data.users);
         if (typeof data.online === "number") setOnlineCount(data.online);
         if (typeof data.dm_unread === "number") setDmUnread(data.dm_unread);
+        if (data.typing_users) setTypingUsers(data.typing_users);
 
         // DM сообщения
         if (data.dm_messages?.length > 0) {
@@ -431,6 +436,18 @@ export default function Okeo() {
     }
     setAuthError("Не удалось подключиться. Проверьте интернет и попробуйте снова.");
     setJoining(false);
+  };
+
+  const sendTyping = (room: string) => {
+    if (!sessionId) return;
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    fetch(`${API_URL}?action=typing&sid=${encodeURIComponent(sessionId)}`, {
+      method: "POST",
+      body: new URLSearchParams({ room }),
+    }).catch(() => {});
+    typingTimerRef.current = setTimeout(() => {
+      typingTimerRef.current = null;
+    }, 3000);
   };
 
   const handleSend = async () => {
@@ -1137,6 +1154,24 @@ export default function Okeo() {
                         <div ref={messagesEndRef} />
                       </div>
 
+                      {/* Typing indicator — public */}
+                      {(() => {
+                        const who = typingUsers.filter(t => t.room === "public" && t.username !== user.username);
+                        if (!who.length) return null;
+                        return (
+                          <div className="flex-shrink-0 px-4 pb-1 flex items-center gap-1.5">
+                            <div className="flex gap-0.5 items-center">
+                              {[0,1,2].map(i => (
+                                <span key={i} className="w-1 h-1 rounded-full bg-white/30 animate-bounce" style={{animationDelay: `${i*0.15}s`}} />
+                              ))}
+                            </div>
+                            <span className="text-white/30 text-[10px]">
+                              {who.map(u => u.username).join(", ")} печатает...
+                            </span>
+                          </div>
+                        );
+                      })()}
+
                       {/* Public input */}
                       <div className="flex-shrink-0 px-3 py-3 border-t border-white/6">
                         <div className="flex items-center gap-2 bg-white/5 border border-white/8 rounded-xl px-3 py-2 focus-within:border-purple-400/40 transition-colors">
@@ -1151,7 +1186,7 @@ export default function Okeo() {
                             className="flex-1 bg-transparent text-white/80 text-xs placeholder:text-white/20 outline-none"
                             placeholder="Сообщение..."
                             value={input}
-                            onChange={(e) => setInput(e.target.value)}
+                            onChange={(e) => { setInput(e.target.value); if (e.target.value) sendTyping("public"); }}
                             onKeyDown={handleKeyDown}
                             disabled={loading}
                           />
@@ -1293,6 +1328,25 @@ export default function Okeo() {
                             <div ref={dmMessagesEndRef} />
                           </div>
 
+                          {/* Typing indicator — DM */}
+                          {(() => {
+                            const dmRoom = `dm:${activeConv.id}`;
+                            const who = typingUsers.filter(t => t.room === dmRoom && t.username !== user.username);
+                            if (!who.length) return null;
+                            return (
+                              <div className="flex-shrink-0 px-3 pb-1 flex items-center gap-1.5">
+                                <div className="flex gap-0.5 items-center">
+                                  {[0,1,2].map(i => (
+                                    <span key={i} className="w-1 h-1 rounded-full bg-purple-400/50 animate-bounce" style={{animationDelay: `${i*0.15}s`}} />
+                                  ))}
+                                </div>
+                                <span className="text-white/30 text-[10px]">
+                                  {who[0].username} печатает...
+                                </span>
+                              </div>
+                            );
+                          })()}
+
                           {/* DM input */}
                           <div className="flex-shrink-0 px-3 py-3 border-t border-white/6">
                             <div className="flex items-center gap-2 bg-white/5 border border-white/8 rounded-xl px-3 py-2 focus-within:border-purple-400/40 transition-colors">
@@ -1301,7 +1355,7 @@ export default function Okeo() {
                                 className="flex-1 bg-transparent text-white/80 text-xs placeholder:text-white/20 outline-none"
                                 placeholder={`${activeConv.target_username}...`}
                                 value={dmInput}
-                                onChange={(e) => setDmInput(e.target.value)}
+                                onChange={(e) => { setDmInput(e.target.value); if (e.target.value && activeConv) sendTyping(`dm:${activeConv.id}`); }}
                                 onKeyDown={handleDmKeyDown}
                                 disabled={dmLoading}
                               />

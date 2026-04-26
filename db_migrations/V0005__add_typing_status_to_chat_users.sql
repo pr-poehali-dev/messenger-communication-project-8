@@ -1,0 +1,6 @@
+ALTER TABLE chat_users
+  ADD COLUMN IF NOT EXISTS typing_in VARCHAR(100) DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS typing_at TIMESTAMPTZ DEFAULT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_chat_users_typing_at ON chat_users(typing_at)
+  WHERE typing_at IS NOT NULL;

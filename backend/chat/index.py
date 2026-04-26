@@ -441,6 +441,16 @@ def handler(event, context):
             }
             return json_response({"message": msg}, 201)
 
+        # POST ?action=typing — отметить что пользователь печатает
+        if action == "typing" and method == "POST":
+            if not session_id:
+                return json_response({"ok": False})
+            room = (body.get("room") or query_params.get("room") or "public").strip()[:100]
+            cur.execute(f"""UPDATE chat_users SET typing_in = {esc(room)}, typing_at = NOW()
+                            WHERE session_id = {esc(session_id)}""")
+            conn.commit()
+            return json_response({"ok": True})
+
         # GET ?action=poll — единый запрос: сообщения + пользователи + онлайн + dm_unread + dm_messages
         if action == "poll" and method == "GET":
             since = query_params.get("since")
@@ -470,8 +480,15 @@ def handler(event, context):
             users = [{"id": str(r[0]), "username": r[1], "color": r[2],
                       "last_seen": r[3].isoformat() if r[3] else None} for r in users_rows]
 
+            # Кто сейчас печатает (активность за последние 4 сек)
+            cur.execute(f"""SELECT username, color, typing_in FROM chat_users
+                            WHERE typing_at > NOW() - INTERVAL '4 seconds'
+                            AND typing_in IS NOT NULL""")
+            typing_rows = cur.fetchall()
+            typing_users = [{"username": r[0], "color": r[1], "room": r[2]} for r in typing_rows]
+
             result = {"messages": msgs, "users": users, "online": len(users_rows),
-                      "dm_unread": 0, "dm_messages": []}
+                      "dm_unread": 0, "dm_messages": [], "typing_users": typing_users}
 
             # Если есть сессия — добавляем личные данные
             if session_id:
