@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "@/components/ui/icon";
 
 const API_URL = "https://functions.poehali.dev/976ea6e4-83e5-4156-8174-055bce907e79";
-const POLL_INTERVAL = 2500;
+const POLL_INTERVAL = 800;
+const POLL_INTERVAL_BG = 5000;
 
 interface Message {
   id: string;
@@ -243,7 +244,11 @@ export default function Okeo() {
   // Поллинг публичных сообщений
   useEffect(() => {
     if (!user) return;
-    const interval = setInterval(async () => {
+    let active = true;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const poll = async () => {
+      if (!active) return;
       const msgs = await fetchMessages(lastSeen || undefined);
       if (msgs && msgs.length > 0) {
         setMessages((prev) => {
@@ -258,8 +263,17 @@ export default function Okeo() {
       fetchOnline();
       fetchOnlineUsers();
       fetchDmUnread();
-    }, POLL_INTERVAL);
-    return () => clearInterval(interval);
+      if (active) {
+        const interval = document.hidden ? POLL_INTERVAL_BG : POLL_INTERVAL;
+        timeoutId = setTimeout(poll, interval);
+      }
+    };
+
+    timeoutId = setTimeout(poll, POLL_INTERVAL);
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
   }, [user, lastSeen, activeTab, fetchMessages, fetchOnline, fetchOnlineUsers, fetchDmUnread]);
 
   // Загрузка DM при открытии диалога
@@ -278,7 +292,11 @@ export default function Okeo() {
   // Поллинг DM
   useEffect(() => {
     if (!activeConv) return;
-    const interval = setInterval(async () => {
+    let active = true;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const poll = async () => {
+      if (!active) return;
       const msgs = await fetchDmMessages(activeConv.id, dmLastSeen || undefined);
       if (msgs && msgs.length > 0) {
         setDmMessages((prev) => {
@@ -291,8 +309,17 @@ export default function Okeo() {
         });
         setDmUnread(0);
       }
-    }, POLL_INTERVAL);
-    return () => clearInterval(interval);
+      if (active) {
+        const interval = document.hidden ? POLL_INTERVAL_BG : POLL_INTERVAL;
+        timeoutId = setTimeout(poll, interval);
+      }
+    };
+
+    timeoutId = setTimeout(poll, POLL_INTERVAL);
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
   }, [activeConv, dmLastSeen, fetchDmMessages]);
 
   useEffect(() => {
