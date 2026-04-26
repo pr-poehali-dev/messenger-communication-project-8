@@ -58,19 +58,65 @@ function formatTime(iso: string) {
   return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
-function playNotificationSound() {
+type SoundType = "pop" | "bell" | "chime" | "soft";
+
+const SOUND_OPTIONS: { value: SoundType; label: string }[] = [
+  { value: "pop", label: "Поп" },
+  { value: "bell", label: "Колокол" },
+  { value: "chime", label: "Перезвон" },
+  { value: "soft", label: "Мягкий" },
+];
+
+function playNotificationSound(type: SoundType = "pop") {
   try {
     const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
     gain.connect(ctx.destination);
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.1);
-    gain.gain.setValueAtTime(0.15, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.3);
+
+    if (type === "pop") {
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.3);
+    } else if (type === "bell") {
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1047, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.4);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.6);
+    } else if (type === "chime") {
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1320, ctx.currentTime);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.25);
+      osc2.type = "sine";
+      osc2.frequency.setValueAtTime(1760, ctx.currentTime + 0.15);
+      gain2.gain.setValueAtTime(0.001, ctx.currentTime);
+      gain2.gain.setValueAtTime(0.12, ctx.currentTime + 0.15);
+      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      osc2.start(ctx.currentTime + 0.15);
+      osc2.stop(ctx.currentTime + 0.45);
+    } else if (type === "soft") {
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(660, ctx.currentTime);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.5);
+    }
   } catch { /* ignore */ }
 }
 
@@ -141,6 +187,8 @@ export default function Okeo() {
   const [dmUnread, setDmUnread] = useState(0);
   const [openingDm, setOpeningDm] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("chat_sound") !== "off");
+  const [soundType, setSoundType] = useState<SoundType>(() => (localStorage.getItem("chat_sound_type") as SoundType) || "pop");
+  const [showSoundMenu, setShowSoundMenu] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dmMessagesEndRef = useRef<HTMLDivElement>(null);
@@ -152,6 +200,13 @@ export default function Okeo() {
     const t = setTimeout(() => setVisible(true), 80);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    if (!showSoundMenu) return;
+    const handler = () => setShowSoundMenu(false);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [showSoundMenu]);
 
   // Автовосстановление сессии — с прогревом и retry
   useEffect(() => {
@@ -287,7 +342,7 @@ export default function Okeo() {
           setLastSeen(newMsgs[newMsgs.length - 1].created_at);
           if (activeTab === "public") setTimeout(scrollToBottom, 50);
           if (document.hidden || activeTab !== "public") {
-            if (soundEnabled) playNotificationSound();
+            if (soundEnabled) playNotificationSound(soundType);
             const last = newMsgs[newMsgs.length - 1];
             sendPushNotification("Общий чат", `${last.username}: ${last.text}`);
           }
@@ -341,7 +396,7 @@ export default function Okeo() {
           setTimeout(scrollDmToBottom, 50);
           const incoming = newMsgs.filter((m) => !m.is_mine);
           if (incoming.length > 0 && (document.hidden || activeTab !== "dm")) {
-            if (soundEnabled) playNotificationSound();
+            if (soundEnabled) playNotificationSound(soundType);
             const last = incoming[incoming.length - 1];
             sendPushNotification(`Личное сообщение от ${last.sender_username}`, last.text);
           }
@@ -1031,17 +1086,58 @@ export default function Okeo() {
                     <div className="flex items-center gap-2 pr-3">
                       <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                       <span className="text-white/25 text-xs">{onlineCount} онлайн</span>
-                      <button
-                        onClick={() => setSoundEnabled((v) => {
-                          const next = !v;
-                          localStorage.setItem("chat_sound", next ? "on" : "off");
-                          return next;
-                        })}
-                        title={soundEnabled ? "Выключить звук" : "Включить звук"}
-                        className="p-1.5 text-white/20 hover:text-white/60 transition-colors rounded-md"
-                      >
-                        <Icon name={soundEnabled ? "Volume2" : "VolumeX"} size={12} />
-                      </button>
+                      <div className="relative">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setShowSoundMenu((v) => !v); }}
+                          title="Настройки звука"
+                          className="p-1.5 text-white/20 hover:text-white/60 transition-colors rounded-md"
+                        >
+                          <Icon name={soundEnabled ? "Volume2" : "VolumeX"} size={12} />
+                        </button>
+                        {showSoundMenu && (
+                          <div
+                            className="absolute right-0 top-7 z-50 rounded-lg border border-white/10 overflow-hidden"
+                            style={{ background: "rgba(18,18,22,0.98)", backdropFilter: "blur(12px)", minWidth: 160 }}
+                          >
+                            <div className="px-3 py-2 border-b border-white/8">
+                              <button
+                                onClick={() => {
+                                  const next = !soundEnabled;
+                                  setSoundEnabled(next);
+                                  localStorage.setItem("chat_sound", next ? "on" : "off");
+                                }}
+                                className="flex items-center gap-2 w-full text-left text-xs text-white/60 hover:text-white/90 transition-colors"
+                              >
+                                <Icon name={soundEnabled ? "Volume2" : "VolumeX"} size={12} />
+                                {soundEnabled ? "Выключить звук" : "Включить звук"}
+                              </button>
+                            </div>
+                            <div className="py-1">
+                              {SOUND_OPTIONS.map((opt) => (
+                                <button
+                                  key={opt.value}
+                                  onClick={() => {
+                                    setSoundType(opt.value);
+                                    localStorage.setItem("chat_sound_type", opt.value);
+                                    setSoundEnabled(true);
+                                    localStorage.setItem("chat_sound", "on");
+                                    playNotificationSound(opt.value);
+                                    setShowSoundMenu(false);
+                                  }}
+                                  className={`flex items-center justify-between w-full px-3 py-1.5 text-xs transition-colors ${
+                                    soundType === opt.value
+                                      ? "text-gold bg-gold/10"
+                                      : "text-white/50 hover:text-white/80 hover:bg-white/5"
+                                  }`}
+                                >
+                                  {opt.label}
+                                  {soundType === opt.value && <Icon name="Check" size={10} />}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                       <button
                         onClick={handleLogout}
                         title="Выйти"
