@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "@/components/ui/icon";
 
 const API_URL = "https://functions.poehali.dev/976ea6e4-83e5-4156-8174-055bce907e79";
-const POLL_INTERVAL = 800;
-const POLL_INTERVAL_BG = 5000;
+const POLL_INTERVAL = 1500;
+const POLL_INTERVAL_BG = 8000;
 
 interface Message {
   id: string;
@@ -219,17 +219,15 @@ export default function Okeo() {
     return () => document.removeEventListener("click", handler);
   }, [showSoundMenu]);
 
-  // Автовосстановление сессии — с прогревом и retry
+  // Автовосстановление сессии — 3 попытки
   useEffect(() => {
     const sid = localStorage.getItem("chat_session_id");
     if (!sid || !sid.startsWith("auth_")) return;
     let cancelled = false;
     const restore = async () => {
-      // Прогрев функции лёгким запросом
-      try { await fetch(`${API_URL}?action=online`); } catch { /* ignore */ }
-      const delays = [500, 1000, 2000, 3000, 5000];
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 3; i++) {
         if (cancelled) return;
+        if (i > 0) await new Promise((r) => setTimeout(r, 2000 * i));
         try {
           const res = await fetch(`${API_URL}?action=join&sid=${encodeURIComponent(sid)}`);
           if (cancelled) return;
@@ -241,10 +239,7 @@ export default function Okeo() {
             setUser(null);
           }
           return;
-        } catch {
-          const delay = delays[Math.min(i, delays.length - 1)];
-          if (i < 9) await new Promise((r) => setTimeout(r, delay));
-        }
+        } catch { /* retry */ }
       }
     };
     restore();
@@ -258,22 +253,6 @@ export default function Okeo() {
   const scrollDmToBottom = () => {
     dmMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
-
-  const fetchMessages = useCallback(async (since?: string) => {
-    try {
-      const url = since
-        ? `${API_URL}?action=messages&since=${encodeURIComponent(since)}&limit=50`
-        : `${API_URL}?action=messages&limit=50`;
-      const res = await fetch(url);
-      if (!res.ok) return undefined;
-      const data = await res.json();
-      return data.messages as Message[];
-    } catch {
-      return undefined;
-    }
-  }, []);
-
-
 
   const fetchDmMessages = useCallback(async (convId: string, since?: string) => {
     try {
@@ -289,23 +268,14 @@ export default function Okeo() {
     }
   }, [sessionId]);
 
-  // Начальная загрузка публичных сообщений
-  useEffect(() => {
-    if (!user) return;
-    fetchMessages().then((msgs) => {
-      if (msgs) {
-        setMessages(msgs);
-        if (msgs.length > 0) setLastSeen(msgs[msgs.length - 1].created_at);
-        setTimeout(scrollToBottom, 50);
-      }
-    });
-  }, [user, fetchMessages]);
 
-  // Единый поллинг — один запрос вместо 4-5
+
+  // Единый поллинг с бэкоффом при ошибках
   useEffect(() => {
     if (!user) return;
     let active = true;
     let timeoutId: ReturnType<typeof setTimeout>;
+    let errorCount = 0;
 
     const doPoll = async () => {
       if (!active) return;
@@ -320,8 +290,9 @@ export default function Okeo() {
         if (sessionId) params.set("sid", sessionId);
 
         const res = await fetch(`${API_URL}?${params.toString()}`);
-        if (!res.ok) return;
+        if (!res.ok) throw new Error("not ok");
         const data = await res.json();
+        errorCount = 0;
 
         // Публичные сообщения
         if (data.messages?.length > 0) {
@@ -363,15 +334,18 @@ export default function Okeo() {
             return [...prev, ...newMsgs];
           });
         }
-      } catch { /* ignore */ }
+      } catch {
+        errorCount = Math.min(errorCount + 1, 5);
+      }
 
       if (active) {
-        const interval = document.hidden ? POLL_INTERVAL_BG : POLL_INTERVAL;
-        timeoutId = setTimeout(doPoll, interval);
+        const base = document.hidden ? POLL_INTERVAL_BG : POLL_INTERVAL;
+        const backoff = errorCount > 0 ? Math.min(base * errorCount, 15000) : base;
+        timeoutId = setTimeout(doPoll, backoff);
       }
     };
 
-    timeoutId = setTimeout(doPoll, POLL_INTERVAL);
+    timeoutId = setTimeout(doPoll, 0);
     return () => {
       active = false;
       clearTimeout(timeoutId);
@@ -414,13 +388,10 @@ export default function Okeo() {
     setAuthError("");
     setJoining(true);
 
-    // Прогрев функции перед входом
-    try { await fetch(`${API_URL}?action=online`); } catch { /* ignore */ }
-
-    const delays = [0, 800, 1500, 2500, 4000];
-    for (let attempt = 0; attempt < 5; attempt++) {
+    const delays = [0, 1500, 3000];
+    for (let attempt = 0; attempt < 3; attempt++) {
       if (attempt > 0) {
-        setAuthError(`Подключаюсь... (попытка ${attempt + 1}/5)`);
+        setAuthError(`Подключаюсь... (попытка ${attempt + 1}/3)`);
         await new Promise((r) => setTimeout(r, delays[attempt]));
       }
       try {
