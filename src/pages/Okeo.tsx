@@ -58,6 +58,34 @@ function formatTime(iso: string) {
   return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
+function playNotificationSound() {
+  try {
+    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+  } catch { /* ignore */ }
+}
+
+function sendPushNotification(title: string, body: string) {
+  if (Notification.permission === "granted") {
+    new Notification(title, { body, icon: "/favicon.ico", silent: true });
+  }
+}
+
+function requestNotificationPermission() {
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+}
+
 const teamMembers = [
   { name: "Алексей Громов", role: "CEO & Co-founder", avatar: "AG", color: "#C9A84C" },
   { name: "Мария Волкова", role: "Head of Product", avatar: "МВ", color: "#7C9EF0" },
@@ -257,6 +285,11 @@ export default function Okeo() {
           if (newMsgs.length === 0) return prev;
           setLastSeen(newMsgs[newMsgs.length - 1].created_at);
           if (activeTab === "public") setTimeout(scrollToBottom, 50);
+          if (document.hidden || activeTab !== "public") {
+            playNotificationSound();
+            const last = newMsgs[newMsgs.length - 1];
+            sendPushNotification("Общий чат", `${last.username}: ${last.text}`);
+          }
           return [...prev, ...newMsgs];
         });
       }
@@ -305,6 +338,12 @@ export default function Okeo() {
           if (newMsgs.length === 0) return prev;
           setDmLastSeen(newMsgs[newMsgs.length - 1].created_at);
           setTimeout(scrollDmToBottom, 50);
+          const incoming = newMsgs.filter((m) => !m.is_mine);
+          if (incoming.length > 0 && (document.hidden || activeTab !== "dm")) {
+            playNotificationSound();
+            const last = incoming[incoming.length - 1];
+            sendPushNotification(`Личное сообщение от ${last.sender_username}`, last.text);
+          }
           return [...prev, ...newMsgs];
         });
         setDmUnread(0);
@@ -366,6 +405,7 @@ export default function Okeo() {
         localStorage.setItem("chat_session_id", data.session_id);
         setCachedUser(data.user);
         setUser(data.user);
+        requestNotificationPermission();
         setJoining(false);
         return;
       } catch {
