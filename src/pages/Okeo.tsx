@@ -1079,60 +1079,34 @@ export default function Okeo() {
                       {/* Поле логина */}
                       <div className="relative">
                         <input
-                          className={`w-full border rounded-xl px-4 py-3 pr-10 text-white placeholder:text-white/30 text-sm outline-none transition-all duration-200 ${
-                            username.length >= 2
+                          className={`w-full border rounded-xl px-4 py-3 text-white placeholder:text-white/30 text-sm outline-none transition-all duration-200 ${
+                            username.length > 0
                               ? "border-purple-400/60 bg-purple-500/20"
-                              : username.length > 0
-                              ? "border-white/20 bg-white/10"
                               : "border-white/10 bg-white/8"
                           }`}
                           placeholder="Имя пользователя"
                           value={username}
                           onChange={(e) => { setUsername(e.target.value); setAuthError(""); }}
                           onKeyDown={(e) => e.key === "Enter" && handleAuth()}
-                          maxLength={50}
                           autoComplete="username"
                         />
-                        {username.length >= 2 && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                            <Icon name="Check" size={14} color="#a78bfa" />
-                          </div>
-                        )}
-                        {username.length > 0 && username.length < 2 && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 text-[10px]">
-                            ещё {2 - username.length}
-                          </div>
-                        )}
                       </div>
 
                       {/* Поле пароля */}
                       <div className="relative">
                         <input
                           type="password"
-                          className={`w-full border rounded-xl px-4 py-3 pr-10 text-white placeholder:text-white/30 text-sm outline-none transition-all duration-200 ${
-                            password.length >= 4
+                          className={`w-full border rounded-xl px-4 py-3 text-white placeholder:text-white/30 text-sm outline-none transition-all duration-200 ${
+                            password.length > 0
                               ? "border-purple-400/60 bg-purple-500/20"
-                              : password.length > 0
-                              ? "border-white/20 bg-white/10"
                               : "border-white/10 bg-white/8"
                           }`}
                           placeholder="Пароль"
                           value={password}
                           onChange={(e) => { setPassword(e.target.value); setAuthError(""); }}
                           onKeyDown={(e) => e.key === "Enter" && handleAuth()}
-                          maxLength={100}
                           autoComplete={authMode === "login" ? "current-password" : "new-password"}
                         />
-                        {password.length >= 4 && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                            <Icon name="Check" size={14} color="#a78bfa" />
-                          </div>
-                        )}
-                        {authMode === "register" && password.length > 0 && password.length < 4 && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 text-[10px]">
-                            ещё {4 - password.length}
-                          </div>
-                        )}
                       </div>
 
                       {authError && (
@@ -1140,7 +1114,7 @@ export default function Okeo() {
                       )}
                       <button
                         onClick={handleAuth}
-                        disabled={joining || username.length < 2 || password.length < (authMode === "register" ? 4 : 1)}
+                        disabled={joining}
                         className="w-full py-3 text-sm tracking-widest uppercase rounded-xl transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium"
                         style={{ background: "linear-gradient(135deg, #7c3aed, #6d28d9, #5b21b6)", boxShadow: "0 4px 20px rgba(124,58,237,0.4)" }}
                       >

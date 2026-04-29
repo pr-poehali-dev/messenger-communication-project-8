@@ -103,12 +103,12 @@ def handler(event, context):
 
         # POST/GET ?action=register
         if action == "register" and method in ("POST", "GET"):
-            username = (query_params.get("username") or body.get("username") or "").strip()[:50]
+            username = (query_params.get("username") or body.get("username") or "").strip()[:100]
             password = (query_params.get("password") or body.get("password") or "").strip()
-            if not username or len(username) < 2:
-                return json_response({"error": "Имя пользователя минимум 2 символа"}, 400)
-            if not password or len(password) < 4:
-                return json_response({"error": "Пароль минимум 4 символа"}, 400)
+            if not username:
+                return json_response({"error": "Введите имя пользователя"}, 400)
+            if not password:
+                return json_response({"error": "Введите пароль"}, 400)
 
             cur.execute(f"SELECT id FROM chat_users WHERE username = {esc(username)} AND password_hash IS NOT NULL")
             if cur.fetchone():
