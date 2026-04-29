@@ -6,6 +6,7 @@ import hashlib
 import secrets
 import base64
 import boto3
+import time
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 ROOM_ID = "00000000-0000-0000-0000-000000000001"
@@ -629,6 +630,126 @@ def handler(event, context):
                                             AND sender_id != {esc(my_id)} AND read_at IS NULL""")
 
                     conn.commit()
+
+            return json_response(result)
+
+        # GET ?action=longpoll — long polling: ждёт новых данных до 25 сек, отдаёт сразу при появлении
+        if action == "longpoll" and method == "GET":
+            since = query_params.get("since")
+            conv_id = query_params.get("conv_id")
+            dm_since = query_params.get("dm_since")
+
+            my_id = None
+            if session_id:
+                cur.execute(f"SELECT id, avatar_url FROM chat_users WHERE session_id = {esc(session_id)}")
+                urow = cur.fetchone()
+                if urow:
+                    my_id = str(urow[0])
+                    cur.execute(f"UPDATE chat_users SET last_seen = NOW() WHERE id = {esc(my_id)}")
+                    conn.commit()
+
+            msgs = []
+            dm_msgs = []
+            dm_unread = 0
+
+            def fetch_data():
+                nonlocal msgs, dm_msgs, dm_unread
+                # Публичные сообщения
+                if since:
+                    cur.execute(f"""SELECT id, username, color, text, created_at FROM chat_messages
+                                   WHERE room_id = {esc(ROOM_ID)} AND created_at > {esc(since)}
+                                   ORDER BY created_at ASC LIMIT 50""")
+                else:
+                    cur.execute(f"""SELECT id, username, color, text, created_at FROM chat_messages
+                                   WHERE room_id = {esc(ROOM_ID)}
+                                   ORDER BY created_at DESC LIMIT 50""")
+                rows = cur.fetchall()
+                msgs = [{"id": str(r[0]), "username": r[1], "color": r[2], "text": r[3],
+                         "created_at": r[4].isoformat() if r[4] else None} for r in rows]
+                if not since:
+                    msgs.reverse()
+
+                # DM сообщения
+                if my_id and conv_id:
+                    cur.execute(f"""SELECT id FROM direct_conversations
+                                    WHERE id = {esc(conv_id)}
+                                    AND (user1_id = {esc(my_id)} OR user2_id = {esc(my_id)})""")
+                    if cur.fetchone():
+                        if dm_since:
+                            cur.execute(f"""SELECT id, sender_id, sender_username, sender_color, text, created_at, read_at
+                                            FROM direct_messages
+                                            WHERE conversation_id = {esc(conv_id)} AND created_at > {esc(dm_since)}
+                                            ORDER BY created_at ASC LIMIT 50""")
+                        else:
+                            cur.execute(f"""SELECT id, sender_id, sender_username, sender_color, text, created_at, read_at
+                                            FROM direct_messages WHERE conversation_id = {esc(conv_id)}
+                                            ORDER BY created_at DESC LIMIT 50""")
+                        dm_rows = cur.fetchall()
+                        dm_msgs = [{"id": str(r[0]), "sender_id": str(r[1]), "sender_username": r[2],
+                                    "sender_color": r[3], "text": r[4],
+                                    "created_at": r[5].isoformat() if r[5] else None,
+                                    "read_at": r[6].isoformat() if r[6] else None,
+                                    "is_mine": str(r[1]) == my_id} for r in dm_rows]
+                        if not dm_since:
+                            dm_msgs.reverse()
+                        if dm_msgs:
+                            cur.execute(f"""UPDATE direct_messages SET read_at = NOW()
+                                            WHERE conversation_id = {esc(conv_id)}
+                                            AND sender_id != {esc(my_id)} AND read_at IS NULL""")
+                            conn.commit()
+
+                # DM unread
+                if my_id:
+                    cur.execute(f"""SELECT COUNT(*) FROM direct_messages dm
+                                    JOIN direct_conversations dc ON dc.id = dm.conversation_id
+                                    WHERE (dc.user1_id = {esc(my_id)} OR dc.user2_id = {esc(my_id)})
+                                    AND dm.sender_id != {esc(my_id)} AND dm.read_at IS NULL""")
+                    dm_unread = cur.fetchone()[0]
+
+            # Первый вызов всегда
+            fetch_data()
+
+            # Если есть since — ждём новых данных (long poll)
+            if since and not msgs and not dm_msgs:
+                deadline = time.time() + 25
+                poll_interval = 0.5
+                while time.time() < deadline:
+                    time.sleep(poll_interval)
+                    poll_interval = min(poll_interval * 1.4, 2.5)
+                    fetch_data()
+                    if msgs or dm_msgs:
+                        break
+                    # Обновляем last_seen
+                    if my_id:
+                        cur.execute(f"UPDATE chat_users SET last_seen = NOW() WHERE id = {esc(my_id)}")
+                        conn.commit()
+
+            # Онлайн пользователи
+            cur.execute("""SELECT id, username, color, last_seen, avatar_url FROM chat_users
+                           WHERE last_seen > NOW() - INTERVAL '5 minutes'
+                           ORDER BY last_seen DESC LIMIT 50""")
+            users_rows = cur.fetchall()
+            users = [{"id": str(r[0]), "username": r[1], "color": r[2],
+                      "last_seen": r[3].isoformat() if r[3] else None, "avatar_url": r[4]} for r in users_rows]
+
+            # Кто печатает
+            cur.execute("""SELECT username, color, typing_in FROM chat_users
+                            WHERE typing_at > NOW() - INTERVAL '4 seconds'
+                            AND typing_in IS NOT NULL""")
+            typing_users = [{"username": r[0], "color": r[1], "room": r[2]} for r in cur.fetchall()]
+
+            result = {
+                "messages": msgs if since else msgs,
+                "users": users,
+                "online": len(users_rows),
+                "dm_unread": dm_unread,
+                "dm_messages": dm_msgs,
+                "typing_users": typing_users,
+            }
+            if my_id:
+                cur.execute(f"SELECT avatar_url FROM chat_users WHERE id = {esc(my_id)}")
+                av = cur.fetchone()
+                result["my_avatar_url"] = av[0] if av else None
 
             return json_response(result)
 

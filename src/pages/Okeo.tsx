@@ -2,8 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "@/components/ui/icon";
 
 const API_URL = "https://functions.poehali.dev/976ea6e4-83e5-4156-8174-055bce907e79";
-const POLL_INTERVAL = 1500;
-const POLL_INTERVAL_BG = 8000;
+const POLL_INTERVAL_BG = 10000;
 
 interface Message {
   id: string;
@@ -305,18 +304,64 @@ export default function Okeo() {
 
 
 
-  // Единый поллинг с бэкоффом при ошибках
+  // Long polling — ждёт новых данных на сервере, сразу перезапускается после ответа
   useEffect(() => {
     if (!user) return;
     let active = true;
-    let timeoutId: ReturnType<typeof setTimeout>;
+    const controller = new AbortController();
     let errorCount = 0;
 
-    const doPoll = async () => {
+    const processData = (data: Record<string, unknown>) => {
+      errorCount = 0;
+
+      if ((data.messages as Message[])?.length > 0) {
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((m: Message) => m.id));
+          const newMsgs = (data.messages as Message[]).filter((m: Message) => !existingIds.has(m.id));
+          if (newMsgs.length === 0) return prev;
+          setLastSeen(newMsgs[newMsgs.length - 1].created_at);
+          setTimeout(scrollToBottom, 50);
+          if (document.hidden) {
+            if (soundEnabled) playNotificationSound(soundType);
+            const last = newMsgs[newMsgs.length - 1];
+            sendPushNotification("Общий чат", `${last.username}: ${last.text}`);
+          }
+          return [...prev, ...newMsgs];
+        });
+      }
+
+      if (data.users) setOnlineUsers(data.users as OnlineUser[]);
+      if (typeof data.online === "number") setOnlineCount(data.online);
+      if (typeof data.dm_unread === "number") setDmUnread(data.dm_unread);
+      if (data.typing_users) setTypingUsers(data.typing_users as TypingUser[]);
+      if (data.my_avatar_url !== undefined) {
+        setUser(prev => prev ? { ...prev, avatar_url: data.my_avatar_url as string } : prev);
+      }
+
+      if ((data.dm_messages as DmMessage[])?.length > 0) {
+        setDmMessages((prev) => {
+          const existingIds = new Set(prev.map((m: DmMessage) => m.id));
+          const newMsgs = (data.dm_messages as DmMessage[]).filter((m: DmMessage) => !existingIds.has(m.id));
+          if (newMsgs.length === 0) return prev;
+          setDmLastSeen(newMsgs[newMsgs.length - 1].created_at);
+          setTimeout(scrollDmToBottom, 50);
+          const incoming = newMsgs.filter((m: DmMessage) => !m.is_mine);
+          if (incoming.length > 0 && document.hidden) {
+            if (soundEnabled) playNotificationSound(soundType);
+            const last = incoming[incoming.length - 1];
+            sendPushNotification(`Личное сообщение от ${last.sender_username}`, last.text);
+          }
+          return [...prev, ...newMsgs];
+        });
+      }
+    };
+
+    const doLongPoll = async () => {
       if (!active) return;
       try {
         const params = new URLSearchParams();
-        params.set("action", "poll");
+        // В фоне используем обычный poll, иначе longpoll
+        params.set("action", document.hidden ? "poll" : "longpoll");
         if (lastSeen) params.set("since", lastSeen);
         if (activeConv) {
           params.set("conv_id", activeConv.id);
@@ -324,69 +369,32 @@ export default function Okeo() {
         }
         if (sessionId) params.set("sid", sessionId);
 
-        const res = await fetch(`${API_URL}?${params.toString()}`);
+        const res = await fetch(`${API_URL}?${params.toString()}`, {
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error("not ok");
         const data = await res.json();
-        errorCount = 0;
-
-        // Публичные сообщения
-        if (data.messages?.length > 0) {
-          setMessages((prev) => {
-            const existingIds = new Set(prev.map((m: Message) => m.id));
-            const newMsgs = data.messages.filter((m: Message) => !existingIds.has(m.id));
-            if (newMsgs.length === 0) return prev;
-            setLastSeen(newMsgs[newMsgs.length - 1].created_at);
-            setTimeout(scrollToBottom, 50);
-            if (document.hidden) {
-              if (soundEnabled) playNotificationSound(soundType);
-              const last = newMsgs[newMsgs.length - 1];
-              sendPushNotification("Общий чат", `${last.username}: ${last.text}`);
-            }
-            return [...prev, ...newMsgs];
-          });
-        }
-
-        // Онлайн
-        if (data.users) setOnlineUsers(data.users);
-        if (typeof data.online === "number") setOnlineCount(data.online);
-        if (typeof data.dm_unread === "number") setDmUnread(data.dm_unread);
-        if (data.typing_users) setTypingUsers(data.typing_users);
-        if (data.my_avatar_url !== undefined) {
-          setUser(prev => prev ? { ...prev, avatar_url: data.my_avatar_url } : prev);
-        }
-
-        // DM сообщения
-        if (data.dm_messages?.length > 0) {
-          setDmMessages((prev) => {
-            const existingIds = new Set(prev.map((m: DmMessage) => m.id));
-            const newMsgs = data.dm_messages.filter((m: DmMessage) => !existingIds.has(m.id));
-            if (newMsgs.length === 0) return prev;
-            setDmLastSeen(newMsgs[newMsgs.length - 1].created_at);
-            setTimeout(scrollDmToBottom, 50);
-            const incoming = newMsgs.filter((m: DmMessage) => !m.is_mine);
-            if (incoming.length > 0 && document.hidden) {
-              if (soundEnabled) playNotificationSound(soundType);
-              const last = incoming[incoming.length - 1];
-              sendPushNotification(`Личное сообщение от ${last.sender_username}`, last.text);
-            }
-            return [...prev, ...newMsgs];
-          });
-        }
-      } catch {
-        errorCount = Math.min(errorCount + 1, 5);
+        processData(data);
+      } catch (e: unknown) {
+        if ((e as Error)?.name === "AbortError") return;
+        errorCount = Math.min(errorCount + 1, 6);
+        const backoff = Math.min(1000 * errorCount, 15000);
+        await new Promise(r => setTimeout(r, backoff));
       }
 
       if (active) {
-        const base = document.hidden ? POLL_INTERVAL_BG : POLL_INTERVAL;
-        const backoff = errorCount > 0 ? Math.min(base * errorCount, 15000) : base;
-        timeoutId = setTimeout(doPoll, backoff);
+        // В фоне пауза между запросами, в активном окне — сразу
+        if (document.hidden) {
+          await new Promise(r => setTimeout(r, POLL_INTERVAL_BG));
+        }
+        doLongPoll();
       }
     };
 
-    timeoutId = setTimeout(doPoll, 0);
+    doLongPoll();
     return () => {
       active = false;
-      clearTimeout(timeoutId);
+      controller.abort();
     };
   }, [user, lastSeen, activeConv, dmLastSeen, sessionId, soundEnabled, soundType]);
 

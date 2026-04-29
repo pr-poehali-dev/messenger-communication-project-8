@@ -39,6 +39,14 @@
       "expectedStatus": 200,
       "expectedBody": { "dm_unread": 0 },
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Longpoll endpoint (no session, returns immediately)",
+      "method": "GET",
+      "path": "/?action=longpoll",
+      "expectedStatus": 200,
+      "expectedBody": { "dm_unread": 0 },
+      "bodyMatcher": "partial"
     }
   ]
 }
