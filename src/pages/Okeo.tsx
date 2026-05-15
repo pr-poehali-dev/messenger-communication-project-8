@@ -328,7 +328,7 @@ export default function Okeo() {
     };
     createGuest();
     return () => { cancelled = true; };
-  }, [user, guest]);  
+  }, []);  
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -358,11 +358,15 @@ export default function Okeo() {
 
 
 
-  // Поллинг для авторизованных пользователей — refs чтобы не перезапускать эффект при каждом новом сообщении
+  // Поллинг для авторизованных пользователей — всё через refs, эффект не перезапускается зря
   const lastSeenRef = useRef<string | null>(null);
   const dmLastSeenRef = useRef<string | null>(null);
   const activeConvRef = useRef<Conversation | null>(null);
+  const soundEnabledRef = useRef(soundEnabled);
+  const soundTypeRef = useRef(soundType);
   activeConvRef.current = activeConv;
+  soundEnabledRef.current = soundEnabled;
+  soundTypeRef.current = soundType;
 
   useEffect(() => {
     if (!user) return;
@@ -399,7 +403,7 @@ export default function Okeo() {
             setLastSeen(lastSeenRef.current);
             setTimeout(scrollToBottom, 50);
             if (document.hidden) {
-              if (soundEnabled) playNotificationSound(soundType);
+              if (soundEnabledRef.current) playNotificationSound(soundTypeRef.current);
               const last = newMsgs[newMsgs.length - 1];
               sendPushNotification("Общий чат", `${last.username}: ${last.text}`);
             }
@@ -423,7 +427,7 @@ export default function Okeo() {
             setTimeout(scrollDmToBottom, 50);
             const incoming = newMsgs.filter((m: DmMessage) => !m.is_mine);
             if (incoming.length > 0 && document.hidden) {
-              if (soundEnabled) playNotificationSound(soundType);
+              if (soundEnabledRef.current) playNotificationSound(soundTypeRef.current);
               const last = incoming[incoming.length - 1];
               sendPushNotification(`Личное сообщение от ${last.sender_username}`, last.text);
             }
@@ -438,9 +442,9 @@ export default function Okeo() {
       timerId = setTimeout(doPoll, interval);
     };
 
-    timerId = setTimeout(doPoll, 0);
+    timerId = setTimeout(doPoll, POLL_INTERVAL);
     return () => { active = false; clearTimeout(timerId); };
-  }, [user, soundEnabled, soundType]);  
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Поллинг анонимного чата для гостей
   const anonLastSeenRef = useRef<string | null>(null);
@@ -487,9 +491,9 @@ export default function Okeo() {
       timerId = setTimeout(doAnonPoll, interval);
     };
 
-    timerId = setTimeout(doAnonPoll, 0);
+    timerId = setTimeout(doAnonPoll, POLL_INTERVAL);
     return () => { active = false; clearTimeout(timerId); abortCtrl.abort(); };
-  }, [guest]);  
+  }, [guest?.session_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Загрузка DM при открытии диалога
   useEffect(() => {
@@ -516,6 +520,16 @@ export default function Okeo() {
     setGuest(null);
     setMessages([]);
     setAnonMessages([]);
+    // Авто-создаём новую гостевую сессию после выхода
+    fetch(`${API_URL}?action=guest_join`)
+      .then(r => r.json())
+      .then(data => {
+        const g: GuestUser = data.user;
+        localStorage.setItem("chat_session_id", g.session_id);
+        setCachedGuest(g);
+        setGuest(g);
+      })
+      .catch(() => {});
   };
 
   const handleAnonSend = async () => {
