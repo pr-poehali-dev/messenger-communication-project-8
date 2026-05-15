@@ -102,6 +102,78 @@ def handler(event, context):
     try:
         cur = conn.cursor()
 
+        # GET ?action=guest_join — вход как гость с указанным именем (без пароля)
+        if action == "guest_join" and method == "GET":
+            username = (query_params.get("username") or "").strip()[:50]
+            if not username:
+                return json_response({"error": "Введите имя"}, 400)
+            guest_sid = "guest_" + secrets.token_hex(20)
+            color = random_color()
+            return json_response({"session_id": guest_sid, "user": {"username": username, "color": color, "session_id": guest_sid}})
+
+        # POST ?action=guest_send — отправка в анонимный чат
+        if action == "guest_send" and method == "POST":
+            sid = query_params.get("sid") or body.get("sid") or ""
+            username = (body.get("username") or "").strip()[:50]
+            color = (body.get("color") or "#a78bfa").strip()[:20]
+            text = (body.get("text") or "").strip()[:2000]
+            if not text or not username:
+                return json_response({"error": "Нет текста или имени"}, 400)
+            cur.execute(f"""INSERT INTO anon_messages (session_id, username, color, text)
+                           VALUES ({esc(sid)}, {esc(username)}, {esc(color)}, {esc(text)})
+                           RETURNING id, username, color, text, created_at""")
+            row = cur.fetchone()
+            conn.commit()
+            msg = {"id": str(row[0]), "username": row[1], "color": row[2], "text": row[3],
+                   "created_at": row[4].isoformat() if row[4] else None}
+            return json_response({"message": msg})
+
+        # GET ?action=anon_poll — получить сообщения анонимного чата (обычный поллинг)
+        if action == "anon_poll" and method == "GET":
+            since = query_params.get("since")
+            if since:
+                cur.execute(f"""SELECT id, username, color, text, created_at FROM anon_messages
+                               WHERE created_at > {esc(since)} ORDER BY created_at ASC LIMIT 50""")
+            else:
+                cur.execute("""SELECT id, username, color, text, created_at FROM anon_messages
+                               ORDER BY created_at DESC LIMIT 50""")
+            rows = cur.fetchall()
+            msgs = [{"id": str(r[0]), "username": r[1], "color": r[2], "text": r[3],
+                     "created_at": r[4].isoformat() if r[4] else None} for r in rows]
+            if not since:
+                msgs.reverse()
+            return json_response({"messages": msgs})
+
+        # GET ?action=anon_longpoll — long polling для анонимного чата
+        if action == "anon_longpoll" and method == "GET":
+            since = query_params.get("since")
+
+            def fetch_anon():
+                if since:
+                    cur.execute(f"""SELECT id, username, color, text, created_at FROM anon_messages
+                                   WHERE created_at > {esc(since)} ORDER BY created_at ASC LIMIT 50""")
+                else:
+                    cur.execute("""SELECT id, username, color, text, created_at FROM anon_messages
+                                   ORDER BY created_at DESC LIMIT 50""")
+                rows = cur.fetchall()
+                result = [{"id": str(r[0]), "username": r[1], "color": r[2], "text": r[3],
+                           "created_at": r[4].isoformat() if r[4] else None} for r in rows]
+                if not since:
+                    result.reverse()
+                return result
+
+            msgs = fetch_anon()
+            if since and not msgs:
+                deadline = time.time() + 20
+                poll_interval = 0.5
+                while time.time() < deadline:
+                    time.sleep(poll_interval)
+                    poll_interval = min(poll_interval * 1.4, 2.5)
+                    msgs = fetch_anon()
+                    if msgs:
+                        break
+            return json_response({"messages": msgs})
+
         # POST/GET ?action=register
         if action == "register" and method in ("POST", "GET"):
             username = (query_params.get("username") or body.get("username") or "").strip()[:100]
@@ -711,7 +783,7 @@ def handler(event, context):
 
             # Если есть since — ждём новых данных (long poll)
             if since and not msgs and not dm_msgs:
-                deadline = time.time() + 25
+                deadline = time.time() + 20
                 poll_interval = 0.5
                 while time.time() < deadline:
                     time.sleep(poll_interval)

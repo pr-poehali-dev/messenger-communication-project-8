@@ -175,6 +175,24 @@ const achievements = [
   { num: "99.9%", label: "Uptime" },
 ];
 
+interface GuestUser {
+  username: string;
+  color: string;
+  session_id: string;
+}
+
+function getCachedGuest(): GuestUser | null {
+  try {
+    const raw = localStorage.getItem("chat_cached_guest");
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function setCachedGuest(g: GuestUser | null) {
+  if (g) localStorage.setItem("chat_cached_guest", JSON.stringify(g));
+  else localStorage.removeItem("chat_cached_guest");
+}
+
 function getCachedUser(): User | null {
   try {
     const raw = localStorage.getItem("chat_cached_user");
@@ -194,6 +212,20 @@ export default function Okeo() {
     if (!sid || !sid.startsWith("auth_")) return null;
     return getCachedUser();
   });
+  const [guest, setGuest] = useState<GuestUser | null>(() => {
+    const sid = localStorage.getItem("chat_session_id");
+    if (!sid || !sid.startsWith("guest_")) return null;
+    return getCachedGuest();
+  });
+  const [guestUsername, setGuestUsername] = useState("");
+  const [guestJoining, setGuestJoining] = useState(false);
+  const [guestError, setGuestError] = useState("");
+  const [anonMessages, setAnonMessages] = useState<Message[]>([]);
+  const [anonLastSeen, setAnonLastSeen] = useState<string | null>(null);
+  const [anonInput, setAnonInput] = useState("");
+  const [anonLoading, setAnonLoading] = useState(false);
+  const anonMessagesEndRef = useRef<HTMLDivElement>(null);
+  const anonInputRef = useRef<HTMLInputElement>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -286,6 +318,10 @@ export default function Okeo() {
 
   const scrollDmToBottom = () => {
     dmMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const scrollAnonToBottom = () => {
+    anonMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   const fetchDmMessages = useCallback(async (convId: string, since?: string) => {
@@ -398,6 +434,48 @@ export default function Okeo() {
     };
   }, [user, lastSeen, activeConv, dmLastSeen, sessionId, soundEnabled, soundType]);
 
+  // Long polling анонимного чата для гостей
+  useEffect(() => {
+    if (!guest) return;
+    let active = true;
+    const controller = new AbortController();
+    let errorCount = 0;
+
+    const doAnonPoll = async () => {
+      if (!active) return;
+      try {
+        const params = new URLSearchParams();
+        params.set("action", document.hidden ? "anon_poll" : "anon_longpoll");
+        if (anonLastSeen) params.set("since", anonLastSeen);
+        const res = await fetch(`${API_URL}?${params.toString()}`, { signal: controller.signal });
+        if (!res.ok) throw new Error("not ok");
+        const data = await res.json();
+        errorCount = 0;
+        if (data.messages?.length > 0) {
+          setAnonMessages((prev) => {
+            const existingIds = new Set(prev.map((m: Message) => m.id));
+            const newMsgs = data.messages.filter((m: Message) => !existingIds.has(m.id));
+            if (newMsgs.length === 0) return prev;
+            setAnonLastSeen(newMsgs[newMsgs.length - 1].created_at);
+            setTimeout(scrollAnonToBottom, 50);
+            return [...prev, ...newMsgs];
+          });
+        }
+      } catch (e: unknown) {
+        if ((e as Error)?.name === "AbortError") return;
+        errorCount = Math.min(errorCount + 1, 6);
+        await new Promise(r => setTimeout(r, Math.min(1000 * errorCount, 15000)));
+      }
+      if (active) {
+        if (document.hidden) await new Promise(r => setTimeout(r, POLL_INTERVAL_BG));
+        doAnonPoll();
+      }
+    };
+
+    doAnonPoll();
+    return () => { active = false; controller.abort(); };
+  }, [guest, anonLastSeen]);
+
   // Загрузка DM при открытии диалога
   useEffect(() => {
     if (!activeConv) return;
@@ -418,12 +496,66 @@ export default function Okeo() {
   const handleLogout = () => {
     localStorage.removeItem("chat_session_id");
     localStorage.removeItem("chat_cached_user");
+    localStorage.removeItem("chat_cached_guest");
     setUser(null);
+    setGuest(null);
     setMessages([]);
+    setAnonMessages([]);
     setUsername("");
     setPassword("");
     setAuthError("");
     setAuthMode("login");
+  };
+
+  const handleGuestJoin = async () => {
+    const name = guestUsername.trim();
+    if (!name) { setGuestError("Введите имя"); return; }
+    setGuestError("");
+    setGuestJoining(true);
+    try {
+      const res = await fetch(`${API_URL}?action=guest_join&username=${encodeURIComponent(name)}`);
+      const data = await res.json();
+      if (!res.ok) { setGuestError(data.error || "Ошибка"); return; }
+      const g: GuestUser = data.user;
+      localStorage.setItem("chat_session_id", g.session_id);
+      setCachedGuest(g);
+      setGuest(g);
+      setTimeout(() => anonInputRef.current?.focus(), 100);
+    } catch {
+      setGuestError("Не удалось подключиться");
+    } finally {
+      setGuestJoining(false);
+    }
+  };
+
+  const handleAnonSend = async () => {
+    if (!guest || !anonInput.trim() || anonLoading) return;
+    const text = anonInput.trim();
+    setAnonInput("");
+    setAnonLoading(true);
+    const optimistic: Message = {
+      id: `opt_${Date.now()}`,
+      username: guest.username,
+      color: guest.color,
+      text,
+      created_at: new Date().toISOString(),
+    };
+    setAnonMessages(prev => [...prev, optimistic]);
+    setTimeout(scrollAnonToBottom, 50);
+    try {
+      const res = await fetch(`${API_URL}?action=guest_send&sid=${encodeURIComponent(guest.session_id)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: guest.username, color: guest.color, text }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAnonMessages(prev => prev.map(m => m.id === optimistic.id ? data.message : m));
+        setAnonLastSeen(data.message.created_at);
+      }
+    } catch { /* ignore */ } finally {
+      setAnonLoading(false);
+    }
   };
 
   const handleAuth = async () => {
@@ -1037,8 +1169,8 @@ export default function Okeo() {
                 height: "600px",
               }}
             >
-              {/* Join form */}
-              {!user ? (
+              {/* Join form / guest chat / main chat */}
+              {!user && !guest ? (
                 <>
                   {/* Header for join */}
                   <div className="flex items-center justify-between px-5 py-4 border-b border-white/6 flex-shrink-0">
@@ -1139,9 +1271,110 @@ export default function Okeo() {
                       >
                         {authMode === "login" ? "Нет аккаунта? Зарегистрироваться" : "Уже есть аккаунт? Войти"}
                       </button>
+                      <div className="flex items-center gap-2 my-1">
+                        <div className="flex-1 h-px bg-white/8" />
+                        <span className="text-white/20 text-xs">или</span>
+                        <div className="flex-1 h-px bg-white/8" />
+                      </div>
+                      <button
+                        onClick={() => {
+                          setGuestError("");
+                          const el = document.getElementById("guest-section");
+                          if (el) el.classList.toggle("hidden");
+                        }}
+                        className="w-full py-2.5 text-xs tracking-widest uppercase rounded-xl border border-white/10 text-white/40 hover:border-purple-400/30 hover:text-purple-300/70 transition-all duration-200"
+                      >
+                        Войти анонимно
+                      </button>
+                      <div id="guest-section" className="hidden space-y-2 pt-1">
+                        <input
+                          className="w-full border border-white/10 bg-white/5 rounded-xl px-4 py-2.5 text-white placeholder:text-white/25 text-sm outline-none focus:border-purple-400/40 transition-all"
+                          placeholder="Ваше имя в анонимном чате"
+                          value={guestUsername}
+                          onChange={e => { setGuestUsername(e.target.value); setGuestError(""); }}
+                          onKeyDown={e => e.key === "Enter" && handleGuestJoin()}
+                        />
+                        {guestError && <div className="text-red-300/80 text-xs text-center">{guestError}</div>}
+                        <button
+                          onClick={handleGuestJoin}
+                          disabled={guestJoining}
+                          className="w-full py-2.5 text-xs tracking-widest uppercase rounded-xl bg-white/6 border border-white/10 text-white/60 hover:bg-purple-500/15 hover:border-purple-400/30 hover:text-white/90 transition-all duration-200 disabled:opacity-40"
+                        >
+                          {guestJoining ? "Вход..." : "Продолжить анонимно"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </>
+              ) : guest ? (
+                /* ── ГОСТЕВОЙ АНОНИМНЫЙ ЧАТ ── */
+                <div className="flex flex-col h-full">
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-white/6 flex-shrink-0">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-purple-500/15 border border-purple-400/20 flex items-center justify-center">
+                        <Icon name="Users" size={13} color="#a78bfa" />
+                      </div>
+                      <div>
+                        <div className="text-white/70 text-sm font-medium">Анонимный чат</div>
+                        <div className="text-white/25 text-xs">Вы: <span style={{ color: guest.color }}>{guest.username}</span></div>
+                      </div>
+                    </div>
+                    <button onClick={handleLogout} className="text-white/25 hover:text-white/60 transition-colors p-1" title="Выйти">
+                      <Icon name="LogOut" size={14} />
+                    </button>
+                  </div>
+                  {/* Messages */}
+                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2" style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.06) transparent" }}>
+                    {anonMessages.length === 0 && (
+                      <div className="flex flex-col items-center justify-center h-full gap-2 text-white/20">
+                        <Icon name="MessageCircle" size={28} />
+                        <span className="text-xs">Начните общение</span>
+                      </div>
+                    )}
+                    {anonMessages.map(m => (
+                      <div key={m.id} className={`flex items-start gap-2 ${m.username === guest.username ? "flex-row-reverse" : ""}`}>
+                        <Avatar color={m.color} username={m.username} size={26} />
+                        <div className={`max-w-[75%] ${m.username === guest.username ? "items-end" : "items-start"} flex flex-col gap-0.5`}>
+                          <span className="text-[10px] text-white/30 px-1" style={{ color: m.color }}>{m.username}</span>
+                          <div
+                            className="px-3 py-2 rounded-2xl text-sm text-white/85 break-words"
+                            style={{
+                              background: m.username === guest.username ? "rgba(124,58,237,0.25)" : "rgba(255,255,255,0.05)",
+                              border: "1px solid",
+                              borderColor: m.username === guest.username ? "rgba(139,92,246,0.25)" : "rgba(255,255,255,0.06)",
+                            }}
+                          >
+                            {m.text}
+                          </div>
+                          <span className="text-[10px] text-white/20 px-1">{formatTime(m.created_at)}</span>
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={anonMessagesEndRef} />
+                  </div>
+                  {/* Input */}
+                  <div className="px-3 py-3 border-t border-white/6 flex-shrink-0">
+                    <div className="flex items-center gap-2 bg-white/4 border border-white/8 rounded-xl px-3 py-2">
+                      <input
+                        ref={anonInputRef}
+                        className="flex-1 bg-transparent text-white/85 text-sm placeholder:text-white/25 outline-none"
+                        placeholder="Сообщение..."
+                        value={anonInput}
+                        onChange={e => setAnonInput(e.target.value)}
+                        onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleAnonSend()}
+                        maxLength={2000}
+                      />
+                      <button
+                        onClick={handleAnonSend}
+                        disabled={!anonInput.trim() || anonLoading}
+                        className="w-7 h-7 rounded-lg bg-purple-500/70 flex items-center justify-center hover:bg-purple-500 transition-colors disabled:opacity-30"
+                      >
+                        <Icon name="Send" size={13} color="white" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <>
                   {/* Two-column layout: public | dm */}

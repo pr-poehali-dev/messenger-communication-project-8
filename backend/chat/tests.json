@@ -47,6 +47,28 @@
       "expectedStatus": 200,
       "expectedBody": { "dm_unread": 0 },
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Guest join with name",
+      "method": "GET",
+      "path": "/?action=guest_join&username=АнонКот42",
+      "expectedStatus": 200,
+      "expectedBody": { "session_id": "string" },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Guest join without name returns 400",
+      "method": "GET",
+      "path": "/?action=guest_join",
+      "expectedStatus": 400
+    },
+    {
+      "name": "Anon poll returns messages array",
+      "method": "GET",
+      "path": "/?action=anon_poll",
+      "expectedStatus": 200,
+      "expectedBody": { "messages": [] },
+      "bodyMatcher": "partial"
     }
   ]
 }
