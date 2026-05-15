@@ -283,30 +283,39 @@ export default function Okeo() {
     return () => document.removeEventListener("click", handler);
   }, [showSoundMenu]);
 
-  // Автовосстановление auth-сессии — 3 попытки
+  // Восстановление auth-сессии: кэш применяется сразу, join проверяет в фоне
   useEffect(() => {
     const sid = localStorage.getItem("chat_session_id");
     if (!sid || !sid.startsWith("auth_")) return;
+
+    // Мгновенно ставим кэшированного пользователя — UI не мигает
+    const cached = getCachedUser();
+    if (cached) setUser(cached);
+
     let cancelled = false;
-    const restore = async () => {
-      for (let i = 0; i < 3; i++) {
+    const verify = async () => {
+      for (let i = 0; i < 5; i++) {
         if (cancelled) return;
-        if (i > 0) await new Promise((r) => setTimeout(r, 2000 * i));
+        if (i > 0) await new Promise((r) => setTimeout(r, Math.min(1000 * 2 ** i, 30000)));
         try {
           const res = await fetch(`${API_URL}?action=join&sid=${encodeURIComponent(sid)}`);
           if (cancelled) return;
           if (res.ok) {
             const data = await res.json();
             if (data.user) { setUser(data.user); setCachedUser(data.user); }
-          } else {
+          } else if (res.status === 401) {
+            // Только явный 401 = сессия истекла, разлогиниваем
             setCachedUser(null);
+            localStorage.removeItem("chat_session_id");
             setUser(null);
           }
+          // Любой другой статус (500, сеть) — не трогаем, юзер остаётся
           return;
-        } catch { /* retry */ }
+        } catch { /* сетевая ошибка — retry */ }
       }
+      // После 5 неудачных попыток — оставляем кэшированного пользователя
     };
-    restore();
+    verify();
     return () => { cancelled = true; };
   }, []);
 
