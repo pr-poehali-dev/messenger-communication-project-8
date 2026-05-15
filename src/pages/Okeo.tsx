@@ -226,6 +226,7 @@ export default function Okeo() {
   const [anonLoading, setAnonLoading] = useState(false);
   const anonMessagesEndRef = useRef<HTMLDivElement>(null);
   const anonInputRef = useRef<HTMLInputElement>(null);
+  const [anonGuests, setAnonGuests] = useState<{username: string; color: string}[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -447,6 +448,9 @@ export default function Okeo() {
         const params = new URLSearchParams();
         params.set("action", document.hidden ? "anon_poll" : "anon_longpoll");
         if (anonLastSeen) params.set("since", anonLastSeen);
+        params.set("sid", guest.session_id);
+        params.set("username", guest.username);
+        params.set("color", guest.color);
         const res = await fetch(`${API_URL}?${params.toString()}`, { signal: controller.signal });
         if (!res.ok) throw new Error("not ok");
         const data = await res.json();
@@ -461,6 +465,7 @@ export default function Okeo() {
             return [...prev, ...newMsgs];
           });
         }
+        if (data.guests) setAnonGuests(data.guests);
       } catch (e: unknown) {
         if ((e as Error)?.name === "AbortError") return;
         errorCount = Math.min(errorCount + 1, 6);
@@ -1316,13 +1321,42 @@ export default function Okeo() {
                         <Icon name="Users" size={13} color="#a78bfa" />
                       </div>
                       <div>
-                        <div className="text-white/70 text-sm font-medium">Анонимный чат</div>
+                        <div className="text-white/70 text-sm font-medium flex items-center gap-2">
+                          Анонимный чат
+                          {anonGuests.length > 0 && (
+                            <span className="flex items-center gap-1 text-white/30 text-xs font-normal">
+                              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
+                              {anonGuests.length} онлайн
+                            </span>
+                          )}
+                        </div>
                         <div className="text-white/25 text-xs">Вы: <span style={{ color: guest.color }}>{guest.username}</span></div>
                       </div>
                     </div>
-                    <button onClick={handleLogout} className="text-white/25 hover:text-white/60 transition-colors p-1" title="Выйти">
-                      <Icon name="LogOut" size={14} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {anonGuests.length > 1 && (
+                        <div className="flex -space-x-1.5">
+                          {anonGuests.slice(0, 4).map((g, i) => (
+                            <div
+                              key={i}
+                              title={g.username}
+                              className="w-5 h-5 rounded-full border border-black/40 flex items-center justify-center text-[8px] font-bold text-[#0A0A0B]"
+                              style={{ background: g.color }}
+                            >
+                              {g.username.slice(0, 1).toUpperCase()}
+                            </div>
+                          ))}
+                          {anonGuests.length > 4 && (
+                            <div className="w-5 h-5 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-[8px] text-white/40">
+                              +{anonGuests.length - 4}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <button onClick={handleLogout} className="text-white/25 hover:text-white/60 transition-colors p-1" title="Выйти">
+                        <Icon name="LogOut" size={14} />
+                      </button>
+                    </div>
                   </div>
                   {/* Messages */}
                   <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2" style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.06) transparent" }}>

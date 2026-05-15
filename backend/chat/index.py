@@ -131,6 +131,14 @@ def handler(event, context):
         # GET ?action=anon_poll — получить сообщения анонимного чата (обычный поллинг)
         if action == "anon_poll" and method == "GET":
             since = query_params.get("since")
+            sid = query_params.get("sid") or ""
+            guest_name = query_params.get("username") or ""
+            guest_color = query_params.get("color") or "#a78bfa"
+            if sid and guest_name:
+                cur.execute(f"""INSERT INTO anon_presence (session_id, username, color, last_seen)
+                               VALUES ({esc(sid)}, {esc(guest_name)}, {esc(guest_color)}, NOW())
+                               ON CONFLICT (session_id) DO UPDATE SET last_seen = NOW(), username = {esc(guest_name)}, color = {esc(guest_color)}""")
+                conn.commit()
             if since:
                 cur.execute(f"""SELECT id, username, color, text, created_at FROM anon_messages
                                WHERE created_at > {esc(since)} ORDER BY created_at ASC LIMIT 50""")
@@ -142,11 +150,22 @@ def handler(event, context):
                      "created_at": r[4].isoformat() if r[4] else None} for r in rows]
             if not since:
                 msgs.reverse()
-            return json_response({"messages": msgs})
+            cur.execute("SELECT username, color FROM anon_presence WHERE last_seen > NOW() - INTERVAL '2 minutes' ORDER BY last_seen DESC LIMIT 50")
+            guests = [{"username": r[0], "color": r[1]} for r in cur.fetchall()]
+            return json_response({"messages": msgs, "guests": guests, "guest_count": len(guests)})
 
         # GET ?action=anon_longpoll — long polling для анонимного чата
         if action == "anon_longpoll" and method == "GET":
             since = query_params.get("since")
+            sid = query_params.get("sid") or ""
+            guest_name = query_params.get("username") or ""
+            guest_color = query_params.get("color") or "#a78bfa"
+
+            if sid and guest_name:
+                cur.execute(f"""INSERT INTO anon_presence (session_id, username, color, last_seen)
+                               VALUES ({esc(sid)}, {esc(guest_name)}, {esc(guest_color)}, NOW())
+                               ON CONFLICT (session_id) DO UPDATE SET last_seen = NOW(), username = {esc(guest_name)}, color = {esc(guest_color)}""")
+                conn.commit()
 
             def fetch_anon():
                 if since:
@@ -172,7 +191,10 @@ def handler(event, context):
                     msgs = fetch_anon()
                     if msgs:
                         break
-            return json_response({"messages": msgs})
+
+            cur.execute("SELECT username, color FROM anon_presence WHERE last_seen > NOW() - INTERVAL '2 minutes' ORDER BY last_seen DESC LIMIT 50")
+            guests = [{"username": r[0], "color": r[1]} for r in cur.fetchall()]
+            return json_response({"messages": msgs, "guests": guests, "guest_count": len(guests)})
 
         # POST/GET ?action=register
         if action == "register" and method in ("POST", "GET"):
