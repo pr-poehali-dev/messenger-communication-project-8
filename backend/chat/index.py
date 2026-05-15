@@ -102,11 +102,11 @@ def handler(event, context):
     try:
         cur = conn.cursor()
 
-        # GET ?action=guest_join — вход как гость с указанным именем (без пароля)
+        # GET ?action=guest_join — вход как гость (имя опционально)
         if action == "guest_join" and method == "GET":
             username = (query_params.get("username") or "").strip()[:50]
             if not username:
-                return json_response({"error": "Введите имя"}, 400)
+                username = random_username()  # авто-имя если не указано
             guest_sid = "guest_" + secrets.token_hex(20)
             color = random_color()
             return json_response({"session_id": guest_sid, "user": {"username": username, "color": color, "session_id": guest_sid}})

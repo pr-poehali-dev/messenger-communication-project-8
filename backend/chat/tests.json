@@ -57,10 +57,12 @@
       "bodyMatcher": "partial"
     },
     {
-      "name": "Guest join without name returns 400",
+      "name": "Guest join without name generates random username",
       "method": "GET",
       "path": "/?action=guest_join",
-      "expectedStatus": 400
+      "expectedStatus": 200,
+      "expectedBody": { "session_id": "string" },
+      "bodyMatcher": "partial"
     },
     {
       "name": "Anon poll returns messages array",

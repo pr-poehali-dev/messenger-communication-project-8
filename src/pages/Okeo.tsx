@@ -156,11 +156,6 @@ function sendPushNotification(title: string, body: string) {
   }
 }
 
-function requestNotificationPermission() {
-  if ("Notification" in window && Notification.permission === "default") {
-    Notification.requestPermission();
-  }
-}
 
 const teamMembers = [
   { name: "Алексей Громов", role: "CEO & Co-founder", avatar: "AG", color: "#C9A84C" },
@@ -218,9 +213,6 @@ export default function Okeo() {
     if (!sid || !sid.startsWith("guest_")) return null;
     return getCachedGuest();
   });
-  const [guestUsername, setGuestUsername] = useState("");
-  const [guestJoining, setGuestJoining] = useState(false);
-  const [guestError, setGuestError] = useState("");
   const [anonMessages, setAnonMessages] = useState<Message[]>([]);
   const [anonLastSeen, setAnonLastSeen] = useState<string | null>(null);
   const [anonInput, setAnonInput] = useState("");
@@ -231,11 +223,6 @@ export default function Okeo() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [joining, setJoining] = useState(false);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
-  const [authError, setAuthError] = useState("");
   const [onlineCount, setOnlineCount] = useState(0);
   const [lastSeen, setLastSeen] = useState<string | null>(null);
 
@@ -323,7 +310,25 @@ export default function Okeo() {
     return () => { cancelled = true; };
   }, []);
 
-
+  // Авто-создание гостевой сессии если нет ни auth_, ни guest_
+  useEffect(() => {
+    const sid = localStorage.getItem("chat_session_id");
+    if (sid) return; // уже есть сессия
+    let cancelled = false;
+    const createGuest = async () => {
+      try {
+        const res = await fetch(`${API_URL}?action=guest_join`);
+        if (cancelled || !res.ok) return;
+        const data = await res.json();
+        const g: GuestUser = data.user;
+        localStorage.setItem("chat_session_id", g.session_id);
+        setCachedGuest(g);
+        setGuest(g);
+      } catch { /* игнорируем — попробуем при следующем рендере */ }
+    };
+    createGuest();
+    return () => { cancelled = true; };
+  }, [user, guest]);  
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -446,15 +451,18 @@ export default function Okeo() {
     let timerId: ReturnType<typeof setTimeout>;
     let errorCount = 0;
 
+    let abortCtrl = new AbortController();
+
     const doAnonPoll = async () => {
       if (!active) return;
+      abortCtrl = new AbortController();
       try {
         const params = new URLSearchParams({ action: "anon_poll" });
         if (anonLastSeenRef.current) params.set("since", anonLastSeenRef.current);
         params.set("sid", guest.session_id);
         params.set("username", guest.username);
         params.set("color", guest.color);
-        const res = await fetch(`${API_URL}?${params.toString()}`);
+        const res = await fetch(`${API_URL}?${params.toString()}`, { signal: abortCtrl.signal });
         if (!res.ok) throw new Error("not ok");
         const data = await res.json();
         errorCount = 0;
@@ -470,7 +478,8 @@ export default function Okeo() {
           });
         }
         if (data.guests) setAnonGuests(data.guests);
-      } catch {
+      } catch (e: unknown) {
+        if ((e as Error)?.name === "AbortError") return;
         errorCount = Math.min(errorCount + 1, 5);
       }
       if (!active) return;
@@ -479,7 +488,7 @@ export default function Okeo() {
     };
 
     timerId = setTimeout(doAnonPoll, 0);
-    return () => { active = false; clearTimeout(timerId); };
+    return () => { active = false; clearTimeout(timerId); abortCtrl.abort(); };
   }, [guest]);  
 
   // Загрузка DM при открытии диалога
@@ -507,31 +516,6 @@ export default function Okeo() {
     setGuest(null);
     setMessages([]);
     setAnonMessages([]);
-    setUsername("");
-    setPassword("");
-    setAuthError("");
-    setAuthMode("login");
-  };
-
-  const handleGuestJoin = async () => {
-    const name = guestUsername.trim();
-    if (!name) { setGuestError("Введите имя"); return; }
-    setGuestError("");
-    setGuestJoining(true);
-    try {
-      const res = await fetch(`${API_URL}?action=guest_join&username=${encodeURIComponent(name)}`);
-      const data = await res.json();
-      if (!res.ok) { setGuestError(data.error || "Ошибка"); return; }
-      const g: GuestUser = data.user;
-      localStorage.setItem("chat_session_id", g.session_id);
-      setCachedGuest(g);
-      setGuest(g);
-      setTimeout(() => anonInputRef.current?.focus(), 100);
-    } catch {
-      setGuestError("Не удалось подключиться");
-    } finally {
-      setGuestJoining(false);
-    }
   };
 
   const handleAnonSend = async () => {
@@ -562,43 +546,6 @@ export default function Okeo() {
     } catch { /* ignore */ } finally {
       setAnonLoading(false);
     }
-  };
-
-  const handleAuth = async () => {
-    const name = username.trim();
-    const pwd = password.trim();
-    if (!name) { setAuthError("Введите имя пользователя"); return; }
-    if (!pwd) { setAuthError("Введите пароль"); return; }
-    setAuthError("");
-    setJoining(true);
-
-    const delays = [0, 1500, 3000];
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt > 0) {
-        setAuthError(`Подключаюсь... (попытка ${attempt + 1}/3)`);
-        await new Promise((r) => setTimeout(r, delays[attempt]));
-      }
-      try {
-        const params = new URLSearchParams({ action: authMode, username: name, password: pwd });
-        const res = await fetch(`${API_URL}?${params.toString()}`);
-        const data = await res.json();
-        if (!res.ok) {
-          setAuthError(data.error || "Ошибка входа");
-          setJoining(false);
-          return;
-        }
-        localStorage.setItem("chat_session_id", data.session_id);
-        setCachedUser(data.user);
-        setUser(data.user);
-        requestNotificationPermission();
-        setJoining(false);
-        return;
-      } catch {
-        // продолжаем retry
-      }
-    }
-    setAuthError("Не удалось подключиться. Проверьте интернет и попробуйте снова.");
-    setJoining(false);
   };
 
   const handleAvatarUpload = async (file: File) => {
@@ -1177,141 +1124,11 @@ export default function Okeo() {
             >
               {/* Join form / guest chat / main chat */}
               {!user && !guest ? (
-                <>
-                  {/* Header for join */}
-                  <div className="flex items-center justify-between px-5 py-4 border-b border-white/6 flex-shrink-0">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-gold/15 border border-gold/20 flex items-center justify-center">
-                        <Icon name="Hash" size={14} color="#a78bfa" />
-                      </div>
-                      <div>
-                        <div className="text-white/80 text-sm font-medium tracking-wide">общий</div>
-                        <div className="text-white/25 text-xs">
-                          {onlineCount > 0 ? `${onlineCount} участников онлайн` : "Публичный канал"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                      <span className="text-white/25 text-xs ml-1">Live</span>
-                    </div>
-                  </div>
-                  <div
-                    className="flex flex-col items-center justify-center flex-1 px-8 gap-5 relative overflow-hidden"
-                    style={{
-                      backgroundImage: "url(https://cdn.poehali.dev/projects/d89b477e-65e2-4acd-811f-8c4871d901ea/bucket/a3de9951-0609-4cf5-a66d-e388039052c2.png)",
-                      backgroundSize: "cover",
-                      backgroundPosition: "center",
-                    }}
-                  >
-                    <div className="absolute inset-0 bg-black/40" />
-                    <div className="relative z-10 text-center">
-                      <div className="flex items-center justify-center gap-2 mb-3">
-                        <div className="w-8 h-8 rounded-lg bg-purple-500/30 border border-purple-400/40 flex items-center justify-center">
-                          <Icon name="MessageSquare" size={15} color="#a78bfa" />
-                        </div>
-                        <span className="text-white font-bold text-2xl tracking-tight">
-                          Orbit<span className="text-purple-400">.</span>
-                        </span>
-                      </div>
-                      <div className="text-white/90 font-semibold text-lg mb-1">
-                        {authMode === "login" ? "Вход в аккаунт" : "Регистрация"}
-                      </div>
-                      <div className="text-white/40 text-sm">
-                        {authMode === "login" ? "Введите логин и пароль" : "Придумайте логин и пароль"}
-                      </div>
-                    </div>
-                    <div className="relative z-10 w-full max-w-sm space-y-3">
-                      {/* Поле логина */}
-                      <div className="relative">
-                        <input
-                          className={`w-full border rounded-xl px-4 py-3 text-white placeholder:text-white/30 text-sm outline-none transition-all duration-200 ${
-                            username.length > 0
-                              ? "border-purple-400/60 bg-purple-500/20"
-                              : "border-white/10 bg-white/8"
-                          }`}
-                          placeholder="Имя пользователя"
-                          value={username}
-                          onChange={(e) => { setUsername(e.target.value); setAuthError(""); }}
-                          onKeyDown={(e) => e.key === "Enter" && handleAuth()}
-                          autoComplete="username"
-                        />
-                      </div>
-
-                      {/* Поле пароля */}
-                      <div className="relative">
-                        <input
-                          type="password"
-                          className={`w-full border rounded-xl px-4 py-3 text-white placeholder:text-white/30 text-sm outline-none transition-all duration-200 ${
-                            password.length > 0
-                              ? "border-purple-400/60 bg-purple-500/20"
-                              : "border-white/10 bg-white/8"
-                          }`}
-                          placeholder="Пароль"
-                          value={password}
-                          onChange={(e) => { setPassword(e.target.value); setAuthError(""); }}
-                          onKeyDown={(e) => e.key === "Enter" && handleAuth()}
-                          autoComplete={authMode === "login" ? "current-password" : "new-password"}
-                        />
-                      </div>
-
-                      {authError && (
-                        <div className="text-red-300/90 text-xs text-center px-2">{authError}</div>
-                      )}
-                      <button
-                        onClick={handleAuth}
-                        disabled={joining}
-                        className="w-full py-3 text-sm tracking-widest uppercase rounded-xl transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium"
-                        style={{ background: "linear-gradient(135deg, #7c3aed, #6d28d9, #5b21b6)", boxShadow: "0 4px 20px rgba(124,58,237,0.4)" }}
-                      >
-                        {joining ? (
-                          <Icon name="Loader2" size={14} color="white" className="animate-spin" />
-                        ) : (
-                          <Icon name="LogIn" size={14} color="white" />
-                        )}
-                        {joining ? "Загрузка..." : authMode === "login" ? "Войти" : "Зарегистрироваться"}
-                      </button>
-                      <button
-                        onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }}
-                        className="w-full text-purple-300/60 text-xs hover:text-purple-200 transition-colors py-1"
-                      >
-                        {authMode === "login" ? "Нет аккаунта? Зарегистрироваться" : "Уже есть аккаунт? Войти"}
-                      </button>
-                      <div className="flex items-center gap-2 my-1">
-                        <div className="flex-1 h-px bg-white/8" />
-                        <span className="text-white/20 text-xs">или</span>
-                        <div className="flex-1 h-px bg-white/8" />
-                      </div>
-                      <button
-                        onClick={() => {
-                          setGuestError("");
-                          const el = document.getElementById("guest-section");
-                          if (el) el.classList.toggle("hidden");
-                        }}
-                        className="w-full py-2.5 text-xs tracking-widest uppercase rounded-xl border border-white/10 text-white/40 hover:border-purple-400/30 hover:text-purple-300/70 transition-all duration-200"
-                      >
-                        Войти анонимно
-                      </button>
-                      <div id="guest-section" className="hidden space-y-2 pt-1">
-                        <input
-                          className="w-full border border-white/10 bg-white/5 rounded-xl px-4 py-2.5 text-white placeholder:text-white/25 text-sm outline-none focus:border-purple-400/40 transition-all"
-                          placeholder="Ваше имя в анонимном чате"
-                          value={guestUsername}
-                          onChange={e => { setGuestUsername(e.target.value); setGuestError(""); }}
-                          onKeyDown={e => e.key === "Enter" && handleGuestJoin()}
-                        />
-                        {guestError && <div className="text-red-300/80 text-xs text-center">{guestError}</div>}
-                        <button
-                          onClick={handleGuestJoin}
-                          disabled={guestJoining}
-                          className="w-full py-2.5 text-xs tracking-widest uppercase rounded-xl bg-white/6 border border-white/10 text-white/60 hover:bg-purple-500/15 hover:border-purple-400/30 hover:text-white/90 transition-all duration-200 disabled:opacity-40"
-                        >
-                          {guestJoining ? "Вход..." : "Продолжить анонимно"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </>
+                /* Авто-создание сессии — кратковременный спиннер */
+                <div className="flex flex-col items-center justify-center flex-1 gap-3 text-white/20">
+                  <Icon name="Loader2" size={24} className="animate-spin" />
+                  <span className="text-xs">Подключение...</span>
+                </div>
               ) : guest ? (
                 /* ── ГОСТЕВОЙ АНОНИМНЫЙ ЧАТ ── */
                 <div className="flex flex-col h-full">
