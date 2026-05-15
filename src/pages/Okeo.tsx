@@ -213,7 +213,11 @@ export default function Okeo() {
     if (!sid || !sid.startsWith("auth_")) return null;
     return getCachedUser();
   });
-  const [guest, setGuest] = useState<GuestUser | null>(null);
+  const [guest, setGuest] = useState<GuestUser | null>(() => {
+    const sid = localStorage.getItem("chat_session_id");
+    if (!sid || !sid.startsWith("guest_")) return null;
+    return getCachedGuest();
+  });
   const [guestUsername, setGuestUsername] = useState("");
   const [guestJoining, setGuestJoining] = useState(false);
   const [guestError, setGuestError] = useState("");
@@ -319,16 +323,7 @@ export default function Okeo() {
     return () => { cancelled = true; };
   }, []);
 
-  // Восстановление гостевой сессии из кэша (не требует запроса к серверу)
-  useEffect(() => {
-    const sid = localStorage.getItem("chat_session_id");
-    if (!sid || !sid.startsWith("guest_")) return;
-    const cached = getCachedGuest();
-    if (cached) setGuest(cached);
-    else {
-      localStorage.removeItem("chat_session_id");
-    }
-  }, []);
+
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
